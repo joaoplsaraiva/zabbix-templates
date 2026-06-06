@@ -1,0 +1,369 @@
+zabbix_export:
+  version: '7.0'
+  template_groups:
+    - uuid: b572c1d244b14fd4a87a9d9b2aa9fcd7
+      name: 'Templates/Network devices'
+  templates:
+    - uuid: 8c2f4a3b9d5e6f7a0b1c2d3e4f5a6b7c
+      template: 'Link Internet - JPLS'
+      name: 'Link Internet - JPLS'
+      description: |
+        Template de monitoramento de link de internet.
+        Monitora disponibilidade, latência, jitter e perda de pacotes via ICMP.
+        Ideal para monitorar múltiplos links (principal, backup, roteadores, gateways).
+
+        Desenvolvido por João Paulo de Lima Saraiva
+        Baseado na experiência de monitoramento de links de internet da SEFA/PA desde 2011.
+        Compatível com Zabbix 6.0 LTS e 7.0 LTS
+
+        Repositório: https://github.com/joaoplsaraiva/zabbix-templates
+
+        Como usar:
+        - Crie um host para cada link ou roteador a ser monitorado
+        - Defina o IP do host como o gateway ou IP externo do link
+        - Aplique este template ao host
+        - Ajuste as macros conforme os SLAs do seu link
+      groups:
+        - name: 'Templates/Network devices'
+      macros:
+        - macro: '{$ICMP.LOSS.WARN}'
+          value: '20'
+          description: 'Limite de perda de pacotes ICMP em % para alerta'
+        - macro: '{$ICMP.LOSS.CRIT}'
+          value: '50'
+          description: 'Limite de perda de pacotes ICMP em % para crítico'
+        - macro: '{$ICMP.RESPONSE_TIME.WARN}'
+          value: '0.15'
+          description: 'Tempo máximo de resposta ICMP em segundos para alerta (150ms)'
+        - macro: '{$ICMP.RESPONSE_TIME.CRIT}'
+          value: '0.5'
+          description: 'Tempo máximo de resposta ICMP em segundos para crítico (500ms)'
+        - macro: '{$ICMP.JITTER.WARN}'
+          value: '0.05'
+          description: 'Jitter máximo em segundos para alerta (50ms)'
+        - macro: '{$ICMP.COUNT}'
+          value: '5'
+          description: 'Número de pacotes ICMP enviados por verificação'
+        - macro: '{$LINK.NAME}'
+          value: 'Link Principal'
+          description: 'Nome descritivo do link (ex: Link Principal, Link Backup, VIVO Fibra)'
+        - macro: '{$LINK.PROVIDER}'
+          value: 'Provedor'
+          description: 'Nome do provedor/operadora do link'
+        - macro: '{$DOWNTIME.MINUTES.CRIT}'
+          value: '5'
+          description: 'Minutos de indisponibilidade para trigger crítica'
+      items:
+        # ========================
+        # ICMP - DISPONIBILIDADE
+        # ========================
+        - uuid: a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5e6
+          name: 'Link: status de disponibilidade (ICMP ping)'
+          type: SIMPLE
+          key: 'icmpping[,{$ICMP.COUNT},,,,]'
+          delay: '60s'
+          history: 30d
+          trends: 365d
+          valuemap:
+            name: 'Service state'
+          description: |
+            Verifica se o host responde a ICMP (ping).
+            0 = sem resposta (DOWN) | 1 = respondendo (UP)
+          tags:
+            - tag: component
+              value: availability
+        - uuid: b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6f7
+          name: 'Link: perda de pacotes ICMP (%)'
+          type: SIMPLE
+          key: 'icmppingloss[,{$ICMP.COUNT},,,,]'
+          delay: '60s'
+          history: 30d
+          trends: 365d
+          units: '%'
+          description: |
+            Percentual de pacotes ICMP perdidos.
+            Alto percentual indica instabilidade ou congestionamento no link.
+          tags:
+            - tag: component
+              value: availability
+        # ========================
+        # LATÊNCIA
+        # ========================
+        - uuid: c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7a8
+          name: 'Link: tempo de resposta ICMP - mínimo (ms)'
+          type: SIMPLE
+          key: 'icmppingsec[,{$ICMP.COUNT},,,min,]'
+          delay: '60s'
+          history: 30d
+          trends: 365d
+          units: s
+          description: 'Menor tempo de resposta ICMP entre os pacotes enviados'
+          preprocessing:
+            - type: MULTIPLIER
+              parameters:
+                - '1000'
+          tags:
+            - tag: component
+              value: latency
+        - uuid: d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8b9
+          name: 'Link: tempo de resposta ICMP - médio (ms)'
+          type: SIMPLE
+          key: 'icmppingsec[,{$ICMP.COUNT},,,avg,]'
+          delay: '60s'
+          history: 30d
+          trends: 365d
+          units: s
+          description: 'Tempo médio de resposta ICMP — principal métrica de latência do link'
+          preprocessing:
+            - type: MULTIPLIER
+              parameters:
+                - '1000'
+          tags:
+            - tag: component
+              value: latency
+        - uuid: e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9c0
+          name: 'Link: tempo de resposta ICMP - máximo (ms)'
+          type: SIMPLE
+          key: 'icmppingsec[,{$ICMP.COUNT},,,max,]'
+          delay: '60s'
+          history: 30d
+          trends: 365d
+          units: s
+          description: 'Maior tempo de resposta ICMP entre os pacotes enviados'
+          preprocessing:
+            - type: MULTIPLIER
+              parameters:
+                - '1000'
+          tags:
+            - tag: component
+              value: latency
+        # ========================
+        # JITTER
+        # ========================
+        - uuid: f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0d1
+          name: 'Link: jitter ICMP (variação de latência)'
+          type: CALCULATED
+          key: 'icmp.jitter'
+          delay: '60s'
+          history: 30d
+          trends: 365d
+          units: s
+          params: 'last("icmppingsec[,{$ICMP.COUNT},,,max,]") - last("icmppingsec[,{$ICMP.COUNT},,,min,]")'
+          description: |
+            Jitter calculado como a diferença entre o tempo máximo e mínimo de resposta.
+            Alto jitter indica instabilidade no link — impacta qualidade de VoIP e videoconferência.
+          preprocessing:
+            - type: MULTIPLIER
+              parameters:
+                - '1000'
+          tags:
+            - tag: component
+              value: latency
+        # ========================
+        # UPTIME E DISPONIBILIDADE ACUMULADA
+        # ========================
+        - uuid: a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1e2
+          name: 'Link: disponibilidade acumulada (últimas 24h %)'
+          type: CALCULATED
+          key: 'link.availability.24h'
+          delay: '5m'
+          history: 30d
+          trends: 365d
+          units: '%'
+          params: 'avg("icmpping[,{$ICMP.COUNT},,,,]",86400) * 100'
+          description: |
+            Percentual de disponibilidade do link nas últimas 24 horas.
+            Útil para acompanhamento de SLA com o provedor.
+          tags:
+            - tag: component
+              value: availability
+        - uuid: b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2f3
+          name: 'Link: disponibilidade acumulada (últimos 7 dias %)'
+          type: CALCULATED
+          key: 'link.availability.7d'
+          delay: '30m'
+          history: 30d
+          trends: 365d
+          units: '%'
+          params: 'avg("icmpping[,{$ICMP.COUNT},,,,]",604800) * 100'
+          description: |
+            Percentual de disponibilidade do link nos últimos 7 dias.
+            Referência para cálculo de SLA semanal.
+          tags:
+            - tag: component
+              value: availability
+        - uuid: c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3a4
+          name: 'Link: disponibilidade acumulada (últimos 30 dias %)'
+          type: CALCULATED
+          key: 'link.availability.30d'
+          delay: '1h'
+          history: 90d
+          trends: 365d
+          units: '%'
+          params: 'avg("icmpping[,{$ICMP.COUNT},,,,]",2592000) * 100'
+          description: |
+            Percentual de disponibilidade do link nos últimos 30 dias.
+            Referência principal para SLA mensal com o provedor.
+          tags:
+            - tag: component
+              value: availability
+        # ========================
+        # METADATA DO LINK
+        # ========================
+        - uuid: d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4b5
+          name: 'Link: informações do provedor'
+          type: ZABBIX_ACTIVE
+          key: 'system.run[echo "{$LINK.NAME} - {$LINK.PROVIDER}"]'
+          delay: '1h'
+          history: 7d
+          trends: '0'
+          value_type: CHAR
+          description: 'Identificação do link e provedor para referência nos alertas'
+          tags:
+            - tag: component
+              value: info
+      triggers:
+        - uuid: e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5c6
+          expression: 'max(/Link Internet - JPLS/icmpping[,{$ICMP.COUNT},,,,],{$DOWNTIME.MINUTES.CRIT}m) = 0'
+          name: 'Link: INDISPONÍVEL há mais de {$DOWNTIME.MINUTES.CRIT} min - {HOST.NAME} ({$LINK.NAME})'
+          opdata: 'Sem resposta ICMP'
+          priority: DISASTER
+          description: |
+            O link está completamente indisponível (sem resposta ICMP) pelo tempo configurado.
+            Verifique: cabo, roteador, status com o provedor ({$LINK.PROVIDER}).
+          tags:
+            - tag: scope
+              value: availability
+        - uuid: f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6d7
+          expression: 'last(/Link Internet - JPLS/icmpping[,{$ICMP.COUNT},,,,]) = 0 and last(/Link Internet - JPLS/icmpping[,{$ICMP.COUNT},,,,],#1:now-{$DOWNTIME.MINUTES.CRIT}m) = 1'
+          name: 'Link: perdeu resposta ICMP - {HOST.NAME} ({$LINK.NAME})'
+          opdata: 'Link detectado como DOWN'
+          priority: HIGH
+          description: |
+            O link acaba de perder resposta ICMP. Pode ser queda ou instabilidade.
+            Aguarde para confirmar se é indisponibilidade prolongada.
+          tags:
+            - tag: scope
+              value: availability
+        - uuid: a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7e8
+          expression: 'last(/Link Internet - JPLS/icmppingloss[,{$ICMP.COUNT},,,,]) >= {$ICMP.LOSS.CRIT}'
+          name: 'Link: perda crítica de pacotes ({$ICMP.LOSS.CRIT}%) - {HOST.NAME} ({$LINK.NAME})'
+          opdata: 'Perda atual: {ITEM.LASTVALUE}'
+          priority: HIGH
+          description: |
+            A perda de pacotes está acima do limite crítico.
+            Indica grave instabilidade no link — impacta todos os serviços.
+          tags:
+            - tag: scope
+              value: performance
+        - uuid: b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8f9
+          expression: 'last(/Link Internet - JPLS/icmppingloss[,{$ICMP.COUNT},,,,]) >= {$ICMP.LOSS.WARN} and last(/Link Internet - JPLS/icmppingloss[,{$ICMP.COUNT},,,,]) < {$ICMP.LOSS.CRIT}'
+          name: 'Link: perda elevada de pacotes ({$ICMP.LOSS.WARN}%) - {HOST.NAME} ({$LINK.NAME})'
+          opdata: 'Perda atual: {ITEM.LASTVALUE}'
+          priority: WARNING
+          description: |
+            A perda de pacotes está acima do limite de alerta.
+            Pode indicar congestionamento ou instabilidade no link.
+          dependencies:
+            - name: 'Link: perda crítica de pacotes ({$ICMP.LOSS.CRIT}%) - {HOST.NAME} ({$LINK.NAME})'
+              expression: 'last(/Link Internet - JPLS/icmppingloss[,{$ICMP.COUNT},,,,]) >= {$ICMP.LOSS.CRIT}'
+          tags:
+            - tag: scope
+              value: performance
+        - uuid: c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9a0
+          expression: 'avg(/Link Internet - JPLS/icmppingsec[,{$ICMP.COUNT},,,avg,],5m) >= {$ICMP.RESPONSE_TIME.CRIT}'
+          name: 'Link: latência crítica (> {$ICMP.RESPONSE_TIME.CRIT}s / 500ms) - {HOST.NAME} ({$LINK.NAME})'
+          opdata: 'Latência atual: {ITEM.LASTVALUE}'
+          priority: HIGH
+          description: |
+            A latência média do link está acima do limite crítico por 5 minutos.
+            Serviços sensíveis (VoIP, RDP, sistemas web) podem estar impactados.
+          tags:
+            - tag: scope
+              value: performance
+        - uuid: d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0b1
+          expression: 'avg(/Link Internet - JPLS/icmppingsec[,{$ICMP.COUNT},,,avg,],5m) >= {$ICMP.RESPONSE_TIME.WARN} and avg(/Link Internet - JPLS/icmppingsec[,{$ICMP.COUNT},,,avg,],5m) < {$ICMP.RESPONSE_TIME.CRIT}'
+          name: 'Link: latência elevada (> {$ICMP.RESPONSE_TIME.WARN}s / 150ms) - {HOST.NAME} ({$LINK.NAME})'
+          opdata: 'Latência atual: {ITEM.LASTVALUE}'
+          priority: WARNING
+          description: |
+            A latência média do link está acima do limite de alerta.
+            Monitorar para identificar padrão de degradação.
+          dependencies:
+            - name: 'Link: latência crítica (> {$ICMP.RESPONSE_TIME.CRIT}s / 500ms) - {HOST.NAME} ({$LINK.NAME})'
+              expression: 'avg(/Link Internet - JPLS/icmppingsec[,{$ICMP.COUNT},,,avg,],5m) >= {$ICMP.RESPONSE_TIME.CRIT}'
+          tags:
+            - tag: scope
+              value: performance
+        - uuid: e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1c2
+          expression: 'last(/Link Internet - JPLS/icmp.jitter) >= {$ICMP.JITTER.WARN}'
+          name: 'Link: jitter alto (> {$ICMP.JITTER.WARN}s / 50ms) - {HOST.NAME} ({$LINK.NAME})'
+          opdata: 'Jitter atual: {ITEM.LASTVALUE}'
+          priority: WARNING
+          description: |
+            O jitter do link está alto, indicando variação irregular na latência.
+            Impacta especialmente serviços VoIP, videoconferência e streaming.
+          tags:
+            - tag: scope
+              value: performance
+        - uuid: f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2d3
+          expression: 'last(/Link Internet - JPLS/link.availability.30d) < 99.5'
+          name: 'Link: SLA mensal abaixo de 99.5% - {HOST.NAME} ({$LINK.NAME})'
+          opdata: 'Disponibilidade 30d: {ITEM.LASTVALUE}'
+          priority: WARNING
+          description: |
+            A disponibilidade do link nos últimos 30 dias está abaixo de 99.5%.
+            Use esta informação para acionar o SLA com o provedor ({$LINK.PROVIDER}).
+          tags:
+            - tag: scope
+              value: sla
+      graphs:
+        - uuid: a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3e4
+          name: 'Link: latência ICMP (min / avg / max)'
+          graph_items:
+            - sortorder: '0'
+              color: 00AA00
+              item:
+                host: 'Link Internet - JPLS'
+                key: 'icmppingsec[,{$ICMP.COUNT},,,min,]'
+            - sortorder: '1'
+              color: 0080FF
+              item:
+                host: 'Link Internet - JPLS'
+                key: 'icmppingsec[,{$ICMP.COUNT},,,avg,]'
+            - sortorder: '2'
+              color: E6002D
+              item:
+                host: 'Link Internet - JPLS'
+                key: 'icmppingsec[,{$ICMP.COUNT},,,max,]'
+        - uuid: b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4f5
+          name: 'Link: perda de pacotes e jitter'
+          graph_items:
+            - sortorder: '0'
+              color: E6002D
+              item:
+                host: 'Link Internet - JPLS'
+                key: 'icmppingloss[,{$ICMP.COUNT},,,,]'
+            - sortorder: '1'
+              color: FFAD00
+              item:
+                host: 'Link Internet - JPLS'
+                key: 'icmp.jitter'
+        - uuid: c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5a6
+          name: 'Link: disponibilidade acumulada (24h / 7d / 30d)'
+          graph_items:
+            - sortorder: '0'
+              color: 0080FF
+              item:
+                host: 'Link Internet - JPLS'
+                key: 'link.availability.24h'
+            - sortorder: '1'
+              color: 00CC00
+              item:
+                host: 'Link Internet - JPLS'
+                key: 'link.availability.7d'
+            - sortorder: '2'
+              color: FF8800
+              item:
+                host: 'Link Internet - JPLS'
+                key: 'link.availability.30d'
