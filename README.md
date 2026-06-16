@@ -22,7 +22,7 @@ zabbix-templates/
 │   └── README.md
 ├── network/
 │   ├── template_link_internet.yaml        # Uptime, latência, jitter, perda de pacotes
-│   ├── template_mikrotik_snmp.yaml        # MikroTik via SNMP (em breve)
+│   ├── template_mikrotik_snmp.yaml        # MikroTik via SNMP v2c — CPU, memória, temp, wireless, VPN
 │   ├── template_switch_datacom.yaml       # Switches DATACOM DM1200E (em breve)
 │   └── README.md
 ├── services/
@@ -48,7 +48,7 @@ zabbix-templates/
 |---|---|---|---|---|
 | [Linux by Agent](./linux/template_linux_by_agent.yaml) | Linux | 6.0+ / 7.0+ | Zabbix Agent | ✅ Disponível |
 | [Link Internet](./network/template_link_internet.yaml) | Network | 6.0+ / 7.0+ | ICMP + Agent | ✅ Disponível |
-| MikroTik SNMP | Network | 6.0+ / 7.0+ | SNMP v2c | 🔧 Em breve |
+| [MikroTik SNMP](./network/template_mikrotik_snmp.yaml) | Network | 6.0+ / 7.0+ | SNMP v2c | ✅ Disponível |
 | Switch DATACOM DM1200E | Network | 6.0+ / 7.0+ | SNMP v2c | 🔧 Em breve |
 | HAProxy | Services | 6.0+ / 7.0+ | HTTP Agent | 🔧 Em breve |
 | Apache HTTP | Services | 6.0+ / 7.0+ | Zabbix Agent | 🔧 Em breve |

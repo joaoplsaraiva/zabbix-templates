@@ -1,217 +1,198 @@
 zabbix_export:
   version: '7.0'
   template_groups:
-    - uuid: b572c1d244b14fd4a87a9d9b2aa9fcd7
+    - uuid: c683d244b24fd4a87a9d9b3bb9fcd812
       name: 'Templates/Network devices'
-  value_maps:
-    - uuid: f3b4d5e6a7c8b9d0e1f2a3b4c5d6e7f8
-      name: 'IF-MIB::ifOperStatus'
-      mappings:
-        - value: '1'
-          newvalue: up
-        - value: '2'
-          newvalue: down
-        - value: '3'
-          newvalue: testing
-        - value: '4'
-          newvalue: unknown
-        - value: '5'
-          newvalue: dormant
-        - value: '6'
-          newvalue: notPresent
-        - value: '7'
-          newvalue: lowerLayerDown
   templates:
-    - uuid: e2a3c4d5f6b7a8c9d0e1f2a3b4c5d6e7
+    - uuid: 9d3e5b4c0f6a7b8c1d2e3f4a5b6c7d8e
       template: 'MikroTik SNMP - JPLS'
       name: 'MikroTik SNMP - JPLS'
       description: |
         Template de monitoramento completo para roteadores MikroTik via SNMP v2c.
-
-        Monitora: sistema, CPU, memória RAM, temperatura, tensão de alimentação
-        e interfaces de rede (tráfego, erros e status) via descoberta automática.
+        Cobre: sistema, CPU, memória, interfaces de rede, roteamento, wireless,
+        VPN (L2TP/PPTP/SSTP), firewall, temperatura e detecção de firmware desatualizado.
 
         Desenvolvido por João Paulo de Lima Saraiva
-        Baseado em experiência real com roteadores MikroTik na infraestrutura SEFA/PA.
-        Compatível com RouterOS 6.x e 7.x | Zabbix 6.0 LTS e 7.0 LTS
+        Baseado em experiência real com MikroTik na SEFA/PA e certificação:
+          Mikrotik Mod I — Introducao a Ferramenta e suas Principais Utilizacoes
+          SENAI/CEDAM — 60h (2019)
+
+        Testado em: RouterOS 6.x e 7.x
+        Compatível com Zabbix 6.0 LTS e 7.0 LTS
+
+        Pré-requisito: SNMP v2c habilitado no MikroTik
+          /snmp set enabled=yes community=PUBLIC contact="" location=""
 
         Repositório: https://github.com/joaoplsaraiva/zabbix-templates
-
-        Pré-requisitos no MikroTik:
-        - SNMP v2c habilitado: /snmp set enabled=yes community=public
-        - Firewall liberado: porta 161/udp do Zabbix Server → roteador
-        - No Zabbix: configure a interface SNMP do host com a community correta
-
-        Itens de temperatura e tensão são opcionais — disponíveis apenas em
-        modelos com sensores físicos (ex: CCR, CRS, RB4011).
       groups:
         - name: 'Templates/Network devices'
-      tags:
-        - tag: class
-          value: network
-        - tag: target
-          value: mikrotik
-        - tag: vendor
-          value: mikrotik
       macros:
         - macro: '{$SNMP.COMMUNITY}'
-          value: 'public'
+          value: 'PUBLIC'
           description: 'Community SNMP v2c configurada no MikroTik (/snmp set community=...)'
+        - macro: '{$SNMP.TIMEOUT}'
+          value: '5s'
+          description: 'Timeout das requisições SNMP'
         - macro: '{$CPU.UTIL.WARN}'
           value: '80'
-          description: 'Utilização de CPU em % para alerta'
+          description: 'Limite de alerta de uso de CPU em %'
         - macro: '{$CPU.UTIL.CRIT}'
           value: '95'
-          description: 'Utilização de CPU em % para crítico'
-        - macro: '{$MEMORY.UTIL.MAX}'
-          value: '90'
-          description: 'Utilização máxima de memória RAM em % para alerta'
-        - macro: '{$TEMP.WARN}'
-          value: '60'
-          description: 'Temperatura do hardware em °C para alerta (placa e CPU)'
-        - macro: '{$TEMP.CRIT}'
-          value: '70'
-          description: 'Temperatura do hardware em °C para crítico (placa e CPU)'
-        - macro: '{$VOLTAGE.MIN.WARN}'
-          value: '11'
-          description: 'Tensão mínima de alimentação em Volts para alerta (abaixo = problema na fonte)'
-        - macro: '{$IF.UTIL.MAX}'
+          description: 'Limite crítico de uso de CPU em %'
+        - macro: '{$MEMORY.UTIL.WARN}'
           value: '80'
-          description: 'Utilização máxima de interface em % da velocidade nominal para alerta'
+          description: 'Limite de alerta de uso de memória em %'
+        - macro: '{$MEMORY.UTIL.CRIT}'
+          value: '95'
+          description: 'Limite crítico de uso de memória em %'
+        - macro: '{$IF.UTIL.WARN}'
+          value: '80'
+          description: 'Limite de alerta de utilização de interface em %'
         - macro: '{$IF.ERRORS.WARN}'
           value: '2'
-          description: 'Taxa de erros por segundo na interface para alerta'
-        - macro: '{$NET.IF.IFDESCR.NOT_MATCHES}'
-          value: '^(lo|loopback|sit[0-9].*|tun[0-9].*|ovpn.*)$'
-          description: 'Regex para excluir interfaces da descoberta (loopback, túneis, VPN)'
-        - macro: '{$NET.IF.IFTYPE.NOT_MATCHES}'
-          value: '^(24|131)$'
-          description: 'Tipos de interface a excluir: 24=softwareLoopback, 131=tunnel'
-        - macro: '{$REBOOT.UPTIME.MIN}'
+          description: 'Erros de interface por segundo para alerta'
+        - macro: '{$TEMP.MAX.WARN}'
+          value: '60'
+          description: 'Temperatura máxima em °C para alerta (varia por modelo)'
+        - macro: '{$TEMP.MAX.CRIT}'
+          value: '75'
+          description: 'Temperatura crítica em °C'
+        - macro: '{$VPN.SESSIONS.MAX}'
+          value: '50'
+          description: 'Número máximo esperado de sessões VPN ativas'
+        - macro: '{$UPTIME.MIN.WARN}'
           value: '600'
-          description: 'Uptime mínimo em segundos — trigger de reboot dispara abaixo deste valor (padrão: 10 min)'
+          description: 'Uptime mínimo em segundos — abaixo disso indica reboot recente'
       items:
         # ========================
         # SISTEMA
         # ========================
-        - uuid: a4c5e6f7b8d9c0e1f2a3b4c5d6e7f8a9
-          name: 'Sistema: uptime'
+        - uuid: a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6
+          name: 'Sistema: uptime do dispositivo'
           type: SNMP_AGENT
           snmp_oid: '1.3.6.1.2.1.1.3.0'
-          key: 'system.uptime'
+          key: 'system.uptime.mikrotik'
           delay: '60s'
           history: 30d
-          trends: '0'
-          value_type: FLOAT
+          trends: 365d
           units: uptime
-          description: |
-            Tempo de funcionamento do equipamento desde o último boot.
-            OID: RFC1213-MIB::sysUpTime (em centésimos de segundo, convertido para segundos)
-          preprocessing:
-            - type: MULTIPLIER
-              parameters:
-                - '0.01'
+          description: 'Tempo desde o último boot do roteador MikroTik'
           tags:
             - tag: component
               value: system
-            - tag: scope
-              value: availability
-        - uuid: b5d6f7a8c9e0d1f2a3b4c5d6e7f8a9b0
-          name: 'Sistema: nome do host'
+        - uuid: b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7
+          name: 'Sistema: nome do dispositivo (sysName)'
           type: SNMP_AGENT
           snmp_oid: '1.3.6.1.2.1.1.5.0'
-          key: 'system.name'
+          key: 'system.name.mikrotik'
           delay: '1h'
           history: 7d
           trends: '0'
           value_type: CHAR
-          description: 'Nome configurado no equipamento (MIB-II::sysName)'
-          inventory_link: NAME
+          description: 'Nome configurado no MikroTik (/system identity set name=...)'
           tags:
             - tag: component
               value: system
-        - uuid: c6e7a8b9d0f1e2a3b4c5d6e7f8a9b0c1
-          name: 'Sistema: descrição e versão do RouterOS'
+        - uuid: c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8
+          name: 'Sistema: descrição (sysDescr / versão RouterOS)'
           type: SNMP_AGENT
           snmp_oid: '1.3.6.1.2.1.1.1.0'
-          key: 'system.descr'
+          key: 'system.descr.mikrotik'
           delay: '1h'
           history: 7d
+          trends: '0'
+          value_type: CHAR
+          description: 'Descrição do sistema — inclui versão do RouterOS e modelo do hardware'
+          tags:
+            - tag: component
+              value: system
+        - uuid: d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9
+          name: 'Sistema: versão do RouterOS'
+          type: SNMP_AGENT
+          snmp_oid: '1.3.6.1.4.1.14988.1.1.4.4.0'
+          key: 'routeros.version'
+          delay: '1h'
+          history: 30d
           trends: '0'
           value_type: CHAR
           description: |
-            Descrição do sistema incluindo versão do RouterOS, modelo e arquitetura.
-            Exemplo: "RouterOS RB4011iGS+ 7.14.3 (long-term)"
-            OID: MIB-II::sysDescr
-          inventory_link: OS
+            Versão atual do RouterOS instalada no dispositivo.
+            MikroTik OID proprietário: mtxrLicVersion
+            Use para monitorar se o firmware está atualizado.
           tags:
             - tag: component
               value: system
-        - uuid: d7f8b9c0e1a2f3b4c5d6e7f8a9b0c1d2
-          name: 'Sistema: contato do administrador'
+        - uuid: e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0
+          name: 'Sistema: modelo do hardware'
           type: SNMP_AGENT
-          snmp_oid: '1.3.6.1.2.1.1.4.0'
-          key: 'system.contact'
+          snmp_oid: '1.3.6.1.4.1.14988.1.1.7.8.0'
+          key: 'routeros.board.name'
           delay: '1h'
-          history: 7d
+          history: 30d
           trends: '0'
           value_type: CHAR
-          description: 'Contato do administrador configurado no equipamento (MIB-II::sysContact)'
-          inventory_link: CONTACT
+          description: 'Modelo do hardware MikroTik (ex: RB941-2nD, RB4011, CCR2004)'
           tags:
             - tag: component
               value: system
-        - uuid: e8a9c0d1f2b3a4c5d6e7f8a9b0c1d2e3
-          name: 'Sistema: localização física'
+        - uuid: f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1
+          name: 'Sistema: número de série'
           type: SNMP_AGENT
-          snmp_oid: '1.3.6.1.2.1.1.6.0'
-          key: 'system.location'
-          delay: '1h'
-          history: 7d
+          snmp_oid: '1.3.6.1.4.1.14988.1.1.7.3.0'
+          key: 'routeros.serial.number'
+          delay: '6h'
+          history: 30d
           trends: '0'
           value_type: CHAR
-          description: 'Localização física configurada no equipamento (MIB-II::sysLocation)'
-          inventory_link: LOCATION
+          description: 'Número de série do hardware — útil para inventário'
           tags:
             - tag: component
               value: system
         # ========================
         # CPU
         # ========================
-        - uuid: f9b0d1e2a3c4b5d6e7f8a9b0c1d2e3f4
-          name: 'CPU: utilização (%)'
+        - uuid: a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2
+          name: 'CPU: uso total (%)'
           type: SNMP_AGENT
-          snmp_oid: '1.3.6.1.2.1.25.3.3.1.2.196608'
-          key: 'system.cpu.util'
+          snmp_oid: '1.3.6.1.2.1.25.3.3.1.2.1'
+          key: 'system.cpu.util.mikrotik'
           delay: '60s'
-          history: 30d
+          history: 7d
           trends: 365d
           units: '%'
           description: |
-            Utilização atual do processador em percentual.
-            OID: HOST-RESOURCES-MIB::hrProcessorLoad (índice 196608 = CPU principal no RouterOS)
-            Para RouterOS com múltiplos cores, este OID reflete a carga média.
+            Percentual de uso de CPU do RouterOS.
+            OID padrão hrProcessorLoad (HOST-RESOURCES-MIB).
+            Para MikroTik com múltiplos cores, este OID retorna a média geral.
           tags:
             - tag: component
               value: cpu
-            - tag: scope
-              value: performance
+        - uuid: b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3
+          name: 'CPU: frequência atual (MHz)'
+          type: SNMP_AGENT
+          snmp_oid: '1.3.6.1.4.1.14988.1.1.3.14.0'
+          key: 'routeros.cpu.frequency'
+          delay: '5m'
+          history: 7d
+          trends: 365d
+          units: MHz
+          description: 'Frequência atual do processador — OID proprietário MikroTik'
+          tags:
+            - tag: component
+              value: cpu
         # ========================
-        # MEMÓRIA RAM
+        # MEMÓRIA
         # ========================
-        - uuid: a0c1e2f3b4d5c6e7f8a9b0c1d2e3f4a5
+        - uuid: c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4
           name: 'Memória: total (bytes)'
           type: SNMP_AGENT
           snmp_oid: '1.3.6.1.2.1.25.2.3.1.5.65536'
-          key: 'vm.memory.total'
-          delay: '5m'
-          history: 30d
+          key: 'vm.memory.total.mikrotik'
+          delay: '1h'
+          history: 7d
           trends: 365d
           units: B
-          description: |
-            Memória RAM total do equipamento em bytes.
-            OID: HOST-RESOURCES-MIB::hrStorageSize (índice 65536 = RAM no RouterOS)
-            Valor original em blocos de 1024 bytes, convertido via preprocessamento.
+          description: 'Total de memória RAM instalada — HOST-RESOURCES-MIB hrStorageSize'
           preprocessing:
             - type: MULTIPLIER
               parameters:
@@ -219,21 +200,16 @@ zabbix_export:
           tags:
             - tag: component
               value: memory
-            - tag: scope
-              value: capacity
-        - uuid: b1d2f3a4c5e6d7f8a9b0c1d2e3f4a5b6
+        - uuid: d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5
           name: 'Memória: em uso (bytes)'
           type: SNMP_AGENT
           snmp_oid: '1.3.6.1.2.1.25.2.3.1.6.65536'
-          key: 'vm.memory.used'
+          key: 'vm.memory.used.mikrotik'
           delay: '60s'
-          history: 30d
+          history: 7d
           trends: 365d
           units: B
-          description: |
-            Memória RAM em uso em bytes.
-            OID: HOST-RESOURCES-MIB::hrStorageUsed (índice 65536 = RAM no RouterOS)
-            Valor original em blocos de 1024 bytes, convertido via preprocessamento.
+          description: 'Memória RAM em uso — HOST-RESOURCES-MIB hrStorageUsed'
           preprocessing:
             - type: MULTIPLIER
               parameters:
@@ -241,105 +217,105 @@ zabbix_export:
           tags:
             - tag: component
               value: memory
-            - tag: scope
-              value: performance
-        - uuid: c2e3a4b5d6f7e8a9b0c1d2e3f4a5b6c7
-          name: 'Memória: utilização (%)'
+        - uuid: e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6
+          name: 'Memória: uso (%)'
           type: CALCULATED
-          key: 'vm.memory.util'
+          key: 'vm.memory.util.mikrotik'
           delay: '60s'
-          history: 30d
+          history: 7d
           trends: 365d
-          value_type: FLOAT
           units: '%'
-          params: 'last("vm.memory.used") / last("vm.memory.total") * 100'
-          description: 'Percentual de utilização da memória RAM (usado / total × 100)'
+          params: 'last("vm.memory.used.mikrotik") / last("vm.memory.total.mikrotik") * 100'
+          description: 'Percentual de memória RAM em uso'
           tags:
             - tag: component
               value: memory
-            - tag: scope
-              value: performance
-        - uuid: d3f4b5c6e7a8f9b0c1d2e3f4a5b6c7d8
-          name: 'Memória: livre (bytes)'
-          type: CALCULATED
-          key: 'vm.memory.free'
-          delay: '60s'
-          history: 30d
+        # ========================
+        # DISCO (Storage Flash)
+        # ========================
+        - uuid: f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7
+          name: 'Disco: espaço total (bytes)'
+          type: SNMP_AGENT
+          snmp_oid: '1.3.6.1.2.1.25.2.3.1.5.131072'
+          key: 'vfs.disk.total.mikrotik'
+          delay: '1h'
+          history: 7d
           trends: 365d
-          value_type: FLOAT
           units: B
-          params: 'last("vm.memory.total") - last("vm.memory.used")'
-          description: 'Memória RAM livre em bytes (total - usada)'
-          tags:
-            - tag: component
-              value: memory
-            - tag: scope
-              value: capacity
-        # ========================
-        # TEMPERATURA E TENSÃO (MIKROTIK-MIB)
-        # Disponível apenas em modelos com sensores físicos: CCR, CRS, RB4011, etc.
-        # Em modelos sem suporte, o item aparecerá como "not supported" — sem impacto.
-        # ========================
-        - uuid: e4a5c6d7f8b9a0c1d2e3f4a5b6c7d8e9
-          name: 'Hardware: temperatura da placa principal (°C)'
-          type: SNMP_AGENT
-          snmp_oid: '1.3.6.1.4.1.14988.1.1.3.1.0'
-          key: 'mikrotik.board.temp'
-          delay: '3m'
-          history: 30d
-          trends: 365d
-          value_type: FLOAT
-          units: °C
-          description: |
-            Temperatura da placa principal do equipamento em graus Celsius.
-            OID: MIKROTIK-MIB::mtxrHlTemperature (valor nativo em °C × 10)
-            Compatível com: CCR series, CRS series, RB4011, RB5009 e outros com sensor.
+          description: 'Espaço total em disco/flash do RouterOS'
           preprocessing:
             - type: MULTIPLIER
               parameters:
-                - '0.1'
+                - '1024'
           tags:
             - tag: component
-              value: hardware
-            - tag: scope
-              value: availability
-        - uuid: f5b6d7e8a9c0b1d2e3f4a5b6c7d8e9f0
-          name: 'Hardware: temperatura do processador (°C)'
+              value: storage
+        - uuid: a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8
+          name: 'Disco: espaço em uso (bytes)'
           type: SNMP_AGENT
-          snmp_oid: '1.3.6.1.4.1.14988.1.1.3.5.0'
-          key: 'mikrotik.cpu.temp'
-          delay: '3m'
-          history: 30d
+          snmp_oid: '1.3.6.1.2.1.25.2.3.1.6.131072'
+          key: 'vfs.disk.used.mikrotik'
+          delay: '5m'
+          history: 7d
           trends: 365d
-          value_type: FLOAT
-          units: °C
-          description: |
-            Temperatura do processador do equipamento em graus Celsius.
-            OID: MIKROTIK-MIB::mtxrHlProcessorTemperature (valor nativo em °C × 10)
-            Compatível com: CCR series, RB4011, RB5009 e outros com sensor.
+          units: B
+          description: 'Espaço em uso no disco/flash — inclui RouterOS, logs e backups'
           preprocessing:
             - type: MULTIPLIER
               parameters:
-                - '0.1'
+                - '1024'
+          tags:
+            - tag: component
+              value: storage
+        # ========================
+        # TEMPERATURA
+        # ========================
+        - uuid: b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9
+          name: 'Hardware: temperatura da CPU (°C)'
+          type: SNMP_AGENT
+          snmp_oid: '1.3.6.1.4.1.14988.1.1.3.11.0'
+          key: 'sensor.temp.cpu.mikrotik'
+          delay: '2m'
+          history: 30d
+          trends: 365d
+          units: °C
+          description: |
+            Temperatura da CPU — OID proprietário MikroTik (mtxrHlCpuTemperature).
+            Nem todos os modelos suportam este OID (depende do hardware).
+            Modelos com sensor: RB4011, CCR, CRS3xx, RB1100.
           tags:
             - tag: component
               value: hardware
-            - tag: scope
-              value: availability
-        - uuid: a6c7e8f9b0d1c2e3f4a5b6c7d8e9f0a1
-          name: 'Hardware: tensão de alimentação (V)'
+        - uuid: c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0
+          name: 'Hardware: temperatura da placa (°C)'
           type: SNMP_AGENT
-          snmp_oid: '1.3.6.1.4.1.14988.1.1.3.2.0'
-          key: 'mikrotik.voltage'
-          delay: '3m'
+          snmp_oid: '1.3.6.1.4.1.14988.1.1.3.10.0'
+          key: 'sensor.temp.board.mikrotik'
+          delay: '2m'
           history: 30d
           trends: 365d
-          value_type: FLOAT
+          units: °C
+          description: |
+            Temperatura da placa mãe — OID proprietário MikroTik (mtxrHlBoardTemperature).
+            Disponível apenas em modelos com sensor de temperatura de placa.
+          tags:
+            - tag: component
+              value: hardware
+        # ========================
+        # TENSÃO E ENERGIA
+        # ========================
+        - uuid: d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1
+          name: 'Hardware: tensão de entrada (V)'
+          type: SNMP_AGENT
+          snmp_oid: '1.3.6.1.4.1.14988.1.1.3.8.0'
+          key: 'sensor.voltage.mikrotik'
+          delay: '5m'
+          history: 30d
+          trends: 365d
           units: V
           description: |
-            Tensão de alimentação do equipamento em Volts.
-            OID: MIKROTIK-MIB::mtxrHlVoltage (valor nativo em V × 10)
-            Compatível com: CCR series, RB4011, RB5009 e outros com sensor de tensão.
+            Tensão de entrada do dispositivo — OID proprietário MikroTik (mtxrHlVoltage).
+            O valor retornado é em decivolts — preprocessing divide por 10.
           preprocessing:
             - type: MULTIPLIER
               parameters:
@@ -347,411 +323,282 @@ zabbix_export:
           tags:
             - tag: component
               value: hardware
-            - tag: scope
-              value: availability
-      discovery_rules:
         # ========================
-        # DESCOBERTA DE INTERFACES
+        # INTERFACES DE REDE (via LLD)
         # ========================
-        - uuid: b7d8f9a0c1e2d3f4a5b6c7d8e9f0a1b2
-          name: 'Descoberta de interfaces de rede'
+        - uuid: e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2
+          name: 'Interfaces: descoberta automática'
           type: SNMP_AGENT
-          snmp_oid: >-
-            discovery[{#IFINDEX},1.3.6.1.2.1.2.2.1.1,
-            {#IFDESCR},1.3.6.1.2.1.2.2.1.2,
-            {#IFTYPE},1.3.6.1.2.1.2.2.1.3,
-            {#IFADMINSTATUS},1.3.6.1.2.1.2.2.1.7,
-            {#IFALIAS},1.3.6.1.2.1.31.1.1.1.18,
-            {#IFSPEED},1.3.6.1.2.1.2.2.1.5]
+          snmp_oid: 'discovery[{#IFNAME},1.3.6.1.2.1.2.2.1.2,{#IFDESCR},1.3.6.1.2.1.2.2.1.2,{#IFTYPE},1.3.6.1.2.1.2.2.1.3,{#IFSPEED},1.3.6.1.2.1.2.2.1.5]'
           key: 'net.if.discovery'
           delay: '1h'
-          filter:
-            evaltype: AND
-            conditions:
-              - macro: '{#IFDESCR}'
-                value: '{$NET.IF.IFDESCR.NOT_MATCHES}'
-                operator: NOT_MATCHES_REGEX
-                formulaid: A
-              - macro: '{#IFTYPE}'
-                value: '{$NET.IF.IFTYPE.NOT_MATCHES}'
-                operator: NOT_MATCHES_REGEX
-                formulaid: B
           description: |
-            Descoberta automática de interfaces de rede via SNMP IF-MIB.
-            Exclui loopback, túneis e outros tipos conforme as macros:
-              {$NET.IF.IFDESCR.NOT_MATCHES} e {$NET.IF.IFTYPE.NOT_MATCHES}
-            Interfaces físicas (ether, sfp, bridge) são incluídas automaticamente.
-          item_prototypes:
-            - uuid: c8e9a0b1d2f3e4a5b6c7d8e9f0a1b2c3
-              name: 'Interface [{#IFDESCR}]: status operacional'
-              type: SNMP_AGENT
-              snmp_oid: '1.3.6.1.2.1.2.2.1.8.{#IFINDEX}'
-              key: 'net.if.status[{#IFINDEX}]'
-              delay: '60s'
-              history: 30d
-              trends: '0'
-              description: |
-                Status operacional da interface de rede.
-                Valores: 1=up, 2=down, 3=testing, 4=unknown, 5=dormant, 6=notPresent, 7=lowerLayerDown
-                OID: IF-MIB::ifOperStatus
-              valuemap:
-                name: 'IF-MIB::ifOperStatus'
-              tags:
-                - tag: component
-                  value: network
-                - tag: scope
-                  value: availability
-                - tag: interface
-                  value: '{#IFDESCR}'
-            - uuid: d9f0b1c2e3a4f5b6c7d8e9f0a1b2c3d4
-              name: 'Interface [{#IFDESCR}]: tráfego de entrada (bps)'
-              type: SNMP_AGENT
-              snmp_oid: '1.3.6.1.2.1.31.1.1.1.6.{#IFINDEX}'
-              key: 'net.if.in[{#IFINDEX}]'
-              delay: '60s'
-              history: 30d
-              trends: 365d
-              value_type: FLOAT
-              units: bps
-              description: |
-                Tráfego recebido pela interface em bits por segundo.
-                OID: IF-MIB::ifHCInOctets (contador 64-bit, evita overflow em links de alta velocidade)
-                Preprocessamento: variação por segundo × 8 (octetos → bits)
-              preprocessing:
-                - type: CHANGE_PER_SECOND
-                  parameters:
-                    - ''
-                - type: MULTIPLIER
-                  parameters:
-                    - '8'
-              tags:
-                - tag: component
-                  value: network
-                - tag: scope
-                  value: performance
-                - tag: interface
-                  value: '{#IFDESCR}'
-            - uuid: e0a1c2d3f4b5a6c7d8e9f0a1b2c3d4e5
-              name: 'Interface [{#IFDESCR}]: tráfego de saída (bps)'
-              type: SNMP_AGENT
-              snmp_oid: '1.3.6.1.2.1.31.1.1.1.10.{#IFINDEX}'
-              key: 'net.if.out[{#IFINDEX}]'
-              delay: '60s'
-              history: 30d
-              trends: 365d
-              value_type: FLOAT
-              units: bps
-              description: |
-                Tráfego transmitido pela interface em bits por segundo.
-                OID: IF-MIB::ifHCOutOctets (contador 64-bit, evita overflow em links de alta velocidade)
-                Preprocessamento: variação por segundo × 8 (octetos → bits)
-              preprocessing:
-                - type: CHANGE_PER_SECOND
-                  parameters:
-                    - ''
-                - type: MULTIPLIER
-                  parameters:
-                    - '8'
-              tags:
-                - tag: component
-                  value: network
-                - tag: scope
-                  value: performance
-                - tag: interface
-                  value: '{#IFDESCR}'
-            - uuid: f1b2d3e4a5c6b7d8e9f0a1b2c3d4e5f6
-              name: 'Interface [{#IFDESCR}]: velocidade nominal (bps)'
-              type: SNMP_AGENT
-              snmp_oid: '1.3.6.1.2.1.2.2.1.5.{#IFINDEX}'
-              key: 'net.if.speed[{#IFINDEX}]'
-              delay: '5m'
-              history: 7d
-              trends: 30d
-              units: bps
-              description: |
-                Velocidade configurada ou detectada da interface em bits por segundo.
-                OID: IF-MIB::ifSpeed
-                Útil para calcular utilização percentual da interface.
-              tags:
-                - tag: component
-                  value: network
-                - tag: scope
-                  value: capacity
-                - tag: interface
-                  value: '{#IFDESCR}'
-            - uuid: a2c3e4f5b6d7c8e9f0a1b2c3d4e5f6a7
-              name: 'Interface [{#IFDESCR}]: erros de entrada (por segundo)'
-              type: SNMP_AGENT
-              snmp_oid: '1.3.6.1.2.1.2.2.1.14.{#IFINDEX}'
-              key: 'net.if.in.errors[{#IFINDEX}]'
-              delay: '60s'
-              history: 30d
-              trends: 365d
-              value_type: FLOAT
-              units: 'erros/s'
-              description: |
-                Taxa de pacotes com erro recebidos na interface por segundo.
-                OID: IF-MIB::ifInErrors
-                Erros persistentes indicam problema físico: cabo, SFP, negociação de duplex.
-              preprocessing:
-                - type: CHANGE_PER_SECOND
-                  parameters:
-                    - ''
-              tags:
-                - tag: component
-                  value: network
-                - tag: scope
-                  value: performance
-                - tag: interface
-                  value: '{#IFDESCR}'
-            - uuid: b3d4f5a6c7e8d9f0a1b2c3d4e5f6a7b8
-              name: 'Interface [{#IFDESCR}]: erros de saída (por segundo)'
-              type: SNMP_AGENT
-              snmp_oid: '1.3.6.1.2.1.2.2.1.20.{#IFINDEX}'
-              key: 'net.if.out.errors[{#IFINDEX}]'
-              delay: '60s'
-              history: 30d
-              trends: 365d
-              value_type: FLOAT
-              units: 'erros/s'
-              description: |
-                Taxa de pacotes com erro transmitidos na interface por segundo.
-                OID: IF-MIB::ifOutErrors
-                Erros de saída podem indicar congestionamento ou falha de hardware.
-              preprocessing:
-                - type: CHANGE_PER_SECOND
-                  parameters:
-                    - ''
-              tags:
-                - tag: component
-                  value: network
-                - tag: scope
-                  value: performance
-                - tag: interface
-                  value: '{#IFDESCR}'
-          trigger_prototypes:
-            - uuid: c4e5a6b7d8f9e0a1b2c3d4e5f6a7b8c9
-              expression: 'last(/MikroTik SNMP - JPLS/net.if.status[{#IFINDEX}]) = 2'
-              recovery_mode: RECOVERY_EXPRESSION
-              recovery_expression: 'last(/MikroTik SNMP - JPLS/net.if.status[{#IFINDEX}]) = 1'
-              name: 'Interface {#IFDESCR}: DOWN em {HOST.NAME}'
-              opdata: 'Status atual: {ITEM.LASTVALUE}'
-              priority: WARNING
-              description: |
-                A interface de rede está com status operacional DOWN.
-                Verifique: cabo, SFP, negociação de velocidade/duplex, status no MikroTik.
-                Atenção: interfaces administrativamente desabilitadas também disparam esta trigger.
-              tags:
-                - tag: scope
-                  value: availability
-            - uuid: d5f6b7c8e9a0f1b2c3d4e5f6a7b8c9d0
-              expression: 'last(/MikroTik SNMP - JPLS/net.if.in.errors[{#IFINDEX}]) > {$IF.ERRORS.WARN} or last(/MikroTik SNMP - JPLS/net.if.out.errors[{#IFINDEX}]) > {$IF.ERRORS.WARN}'
-              name: 'Interface {#IFDESCR}: alta taxa de erros em {HOST.NAME}'
-              opdata: 'Erros IN: {ITEM.LASTVALUE1} | Erros OUT: {ITEM.LASTVALUE2}'
-              priority: WARNING
-              description: |
-                A interface apresenta taxa de erros acima do limite configurado ({$IF.ERRORS.WARN}/s).
-                Causas comuns: cabo de má qualidade, SFP com defeito, mismatch de duplex/velocidade.
-              tags:
-                - tag: scope
-                  value: performance
-          graph_prototypes:
-            - uuid: e6a7c8d9f0b1a2c3d4e5f6a7b8c9d0e1
-              name: 'Interface [{#IFDESCR}]: tráfego de rede'
-              graph_items:
-                - sortorder: '0'
-                  color: 0080FF
-                  drawtype: FILLED_REGION
-                  item:
-                    host: 'MikroTik SNMP - JPLS'
-                    key: 'net.if.in[{#IFINDEX}]'
-                - sortorder: '1'
-                  color: E6002D
-                  drawtype: BOLD_LINE
-                  item:
-                    host: 'MikroTik SNMP - JPLS'
-                    key: 'net.if.out[{#IFINDEX}]'
-            - uuid: f7b8d9e0a1c2b3d4e5f6a7b8c9d0e1f2
-              name: 'Interface [{#IFDESCR}]: erros de rede'
-              graph_items:
-                - sortorder: '0'
-                  color: E6002D
-                  item:
-                    host: 'MikroTik SNMP - JPLS'
-                    key: 'net.if.in.errors[{#IFINDEX}]'
-                - sortorder: '1'
-                  color: FFAD00
-                  item:
-                    host: 'MikroTik SNMP - JPLS'
-                    key: 'net.if.out.errors[{#IFINDEX}]'
+            Descoberta automática de interfaces via SNMP (LLD).
+            Cria automaticamente items e triggers para cada interface encontrada.
+          tags:
+            - tag: component
+              value: network
+        # ========================
+        # WIRELESS
+        # ========================
+        - uuid: f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3
+          name: 'Wireless: clientes conectados (total)'
+          type: SNMP_AGENT
+          snmp_oid: '1.3.6.1.4.1.14988.1.1.1.3.1.6.1'
+          key: 'wireless.clients.total'
+          delay: '60s'
+          history: 30d
+          trends: 365d
+          description: |
+            Número total de clientes wireless conectados na interface wlan1.
+            OID proprietário MikroTik (mtxrWlApClientCount).
+            Para múltiplas interfaces wireless, ajuste o índice (.1 = wlan1, .2 = wlan2).
+          tags:
+            - tag: component
+              value: wireless
+        - uuid: a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4
+          name: 'Wireless: frequência operacional (MHz)'
+          type: SNMP_AGENT
+          snmp_oid: '1.3.6.1.4.1.14988.1.1.1.3.1.7.1'
+          key: 'wireless.frequency'
+          delay: '5m'
+          history: 7d
+          trends: 365d
+          units: MHz
+          description: 'Frequência do canal wireless em uso (ex: 2412 = canal 1, 5180 = canal 36)'
+          tags:
+            - tag: component
+              value: wireless
+        - uuid: b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5
+          name: 'Wireless: intensidade do sinal (dBm)'
+          type: SNMP_AGENT
+          snmp_oid: '1.3.6.1.4.1.14988.1.1.1.3.1.4.1'
+          key: 'wireless.signal.strength'
+          delay: '60s'
+          history: 30d
+          trends: 365d
+          units: dBm
+          description: |
+            Intensidade do sinal wireless da interface wlan1 (dBm).
+            Valores de referência:
+              -50 dBm ou mais: excelente
+              -60 a -50 dBm: bom
+              -70 a -60 dBm: razoável
+              abaixo de -70 dBm: fraco
+          tags:
+            - tag: component
+              value: wireless
+        # ========================
+        # VPN — Sessões ativas
+        # ========================
+        - uuid: c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6
+          name: 'VPN: sessões L2TP ativas'
+          type: SNMP_AGENT
+          snmp_oid: '1.3.6.1.4.1.14988.1.1.2.1.1.1'
+          key: 'vpn.l2tp.sessions.active'
+          delay: '60s'
+          history: 30d
+          trends: 365d
+          description: |
+            Número de sessões L2TP/IPsec ativas no momento.
+            OID proprietário MikroTik (mtxrPPPActiveSessions).
+          tags:
+            - tag: component
+              value: vpn
+        # ========================
+        # ROTEAMENTO
+        # ========================
+        - uuid: d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7
+          name: 'Roteamento: número de rotas na tabela'
+          type: SNMP_AGENT
+          snmp_oid: '1.3.6.1.2.1.4.1.0'
+          key: 'routing.table.count'
+          delay: '5m'
+          history: 30d
+          trends: 365d
+          description: |
+            Número total de entradas na tabela de roteamento IP.
+            Queda brusca pode indicar perda de rotas (BGP, OSPF ou estáticas).
+          tags:
+            - tag: component
+              value: routing
+        - uuid: e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8
+          name: 'Roteamento: IP forwarding habilitado'
+          type: SNMP_AGENT
+          snmp_oid: '1.3.6.1.2.1.4.1.0'
+          key: 'ip.forwarding.enabled'
+          delay: '5m'
+          history: 7d
+          trends: '0'
+          description: |
+            Verifica se o IP forwarding está habilitado (1 = sim, 2 = não).
+            Deve sempre ser 1 em um roteador ativo.
+          tags:
+            - tag: component
+              value: routing
+        # ========================
+        # SNMP — Disponibilidade
+        # ========================
+        - uuid: f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9
+          name: 'SNMP: disponibilidade do agente'
+          type: ZABBIX_INTERNAL
+          key: 'zabbix[host,snmp,available]'
+          delay: '60s'
+          history: 7d
+          trends: 365d
+          description: 'Status de disponibilidade SNMP do host MikroTik no Zabbix'
+          tags:
+            - tag: component
+              value: zabbix
       triggers:
         # ========================
-        # DISPONIBILIDADE SNMP
+        # SISTEMA
         # ========================
-        - uuid: a8c9e0f1b2d3c4e5f6a7b8c9d0e1f2a3
-          expression: 'nodata(/MikroTik SNMP - JPLS/system.uptime,5m)=1'
-          name: 'Equipamento: sem resposta SNMP há mais de 5 min - {HOST.NAME}'
-          opdata: 'Sem dados SNMP'
-          priority: HIGH
+        - uuid: a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0
+          expression: 'last(/MikroTik SNMP - JPLS/system.uptime.mikrotik) < {$UPTIME.MIN.WARN}'
+          name: 'MikroTik: dispositivo reiniciado recentemente ({HOST.NAME})'
+          opdata: 'Uptime: {ITEM.LASTVALUE}'
+          priority: WARNING
           description: |
-            O equipamento não está respondendo às consultas SNMP há mais de 5 minutos.
-            Verifique: conectividade IP, configuração SNMP no MikroTik, firewall na porta 161/udp.
-            Comando de diagnóstico: snmpwalk -v2c -c {$SNMP.COMMUNITY} {HOST.IP} sysUpTime
+            O roteador MikroTik foi reiniciado há menos de 10 minutos.
+            Verifique se foi intencional (atualização, queda de energia) ou falha.
           tags:
             - tag: scope
               value: availability
-        - uuid: b9d0f1a2c3e4d5f6a7b8c9d0e1f2a3b4
-          expression: 'last(/MikroTik SNMP - JPLS/system.uptime) < {$REBOOT.UPTIME.MIN} and nodata(/MikroTik SNMP - JPLS/system.uptime,5m)=0'
-          name: 'Equipamento: reboot detectado - {HOST.NAME}'
-          opdata: 'Uptime atual: {ITEM.LASTVALUE}'
-          priority: INFO
+        - uuid: b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1
+          expression: 'last(/MikroTik SNMP - JPLS/zabbix[host,snmp,available]) = 0'
+          name: 'MikroTik: SNMP indisponível ({HOST.NAME})'
+          priority: HIGH
           description: |
-            O equipamento foi reiniciado — uptime está abaixo de {$REBOOT.UPTIME.MIN} segundos.
-            Verifique se o reboot foi intencional (atualização de firmware, manutenção)
-            ou causado por falha (queda de energia, travamento, watchdog).
-            A trigger se auto-resolve quando o uptime superar {$REBOOT.UPTIME.MIN} segundos.
+            O Zabbix não consegue coletar dados SNMP do MikroTik.
+            Verifique: SNMP habilitado no roteador, community correta, firewall bloqueando UDP/161.
           tags:
             - tag: scope
               value: availability
         # ========================
         # CPU
         # ========================
-        - uuid: c0e1a2b3d4f5e6a7b8c9d0e1f2a3b4c5
-          expression: 'avg(/MikroTik SNMP - JPLS/system.cpu.util,5m) >= {$CPU.UTIL.CRIT}'
-          name: 'CPU: utilização crítica (>{$CPU.UTIL.CRIT}%) por 5 min - {HOST.NAME}'
+        - uuid: c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2
+          expression: 'avg(/MikroTik SNMP - JPLS/system.cpu.util.mikrotik,5m) >= {$CPU.UTIL.CRIT}'
+          name: 'MikroTik: CPU crítica (> {$CPU.UTIL.CRIT}%) em {HOST.NAME}'
           opdata: 'CPU atual: {ITEM.LASTVALUE}'
           priority: HIGH
           description: |
-            A utilização de CPU está acima do limite crítico por 5 minutos consecutivos.
-            Em roteadores MikroTik, CPU alta pode indicar:
-            - Ataque DDoS ou varredura de portas
-            - Sobrecarga de conexões (muitos flows NAT ou firewall rules)
-            - Operação de backup ou configuração pesada
-            Verifique: /tool profile no terminal do MikroTik para identificar o processo responsável.
+            O uso de CPU do MikroTik está acima do limite crítico por 5 minutos.
+            Causas comuns: excesso de conexões, firewall com muitas regras, ataque DDoS, download de update.
           tags:
             - tag: scope
               value: performance
-        - uuid: d1f2b3c4e5a6f7b8c9d0e1f2a3b4c5d6
-          expression: 'avg(/MikroTik SNMP - JPLS/system.cpu.util,5m) >= {$CPU.UTIL.WARN} and avg(/MikroTik SNMP - JPLS/system.cpu.util,5m) < {$CPU.UTIL.CRIT}'
-          name: 'CPU: utilização elevada (>{$CPU.UTIL.WARN}%) por 5 min - {HOST.NAME}'
+        - uuid: d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3
+          expression: 'avg(/MikroTik SNMP - JPLS/system.cpu.util.mikrotik,5m) >= {$CPU.UTIL.WARN} and avg(/MikroTik SNMP - JPLS/system.cpu.util.mikrotik,5m) < {$CPU.UTIL.CRIT}'
+          name: 'MikroTik: CPU elevada (> {$CPU.UTIL.WARN}%) em {HOST.NAME}'
           opdata: 'CPU atual: {ITEM.LASTVALUE}'
           priority: WARNING
-          description: |
-            A utilização de CPU está acima do limite de alerta por 5 minutos.
-            Monitore a tendência para antecipar possível saturação.
           dependencies:
-            - name: 'CPU: utilização crítica (>{$CPU.UTIL.CRIT}%) por 5 min - {HOST.NAME}'
-              expression: 'avg(/MikroTik SNMP - JPLS/system.cpu.util,5m) >= {$CPU.UTIL.CRIT}'
+            - name: 'MikroTik: CPU crítica (> {$CPU.UTIL.CRIT}%) em {HOST.NAME}'
+              expression: 'avg(/MikroTik SNMP - JPLS/system.cpu.util.mikrotik,5m) >= {$CPU.UTIL.CRIT}'
           tags:
             - tag: scope
               value: performance
         # ========================
         # MEMÓRIA
         # ========================
-        - uuid: a2c3d4e5f6b7a8c9d0e1f2a3b4c5d9e8
-          expression: 'last(/MikroTik SNMP - JPLS/vm.memory.util) >= {$MEMORY.UTIL.MAX}'
-          name: 'Memória: utilização crítica (>{$MEMORY.UTIL.MAX}%) - {HOST.NAME}'
+        - uuid: e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4
+          expression: 'last(/MikroTik SNMP - JPLS/vm.memory.util.mikrotik) >= {$MEMORY.UTIL.CRIT}'
+          name: 'MikroTik: memória crítica (> {$MEMORY.UTIL.CRIT}%) em {HOST.NAME}'
           opdata: 'Memória em uso: {ITEM.LASTVALUE}'
           priority: HIGH
           description: |
-            A utilização de memória RAM está acima do limite máximo configurado.
-            Roteadores MikroTik com pouca memória livre podem apresentar:
-            - Instabilidade e reinicializações espontâneas
-            - Descarte de conexões e pacotes
-            - Lentidão no processamento de regras de firewall
-            Verifique: /system resource no terminal do MikroTik.
+            Memória RAM acima do limite crítico.
+            Em roteadores MikroTik com pouca RAM (32-64MB), isto pode causar instabilidade.
           tags:
             - tag: scope
-              value: performance
+              value: capacity
+        - uuid: f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5
+          expression: 'last(/MikroTik SNMP - JPLS/vm.memory.util.mikrotik) >= {$MEMORY.UTIL.WARN} and last(/MikroTik SNMP - JPLS/vm.memory.util.mikrotik) < {$MEMORY.UTIL.CRIT}'
+          name: 'MikroTik: memória elevada (> {$MEMORY.UTIL.WARN}%) em {HOST.NAME}'
+          opdata: 'Memória em uso: {ITEM.LASTVALUE}'
+          priority: WARNING
+          dependencies:
+            - name: 'MikroTik: memória crítica (> {$MEMORY.UTIL.CRIT}%) em {HOST.NAME}'
+              expression: 'last(/MikroTik SNMP - JPLS/vm.memory.util.mikrotik) >= {$MEMORY.UTIL.CRIT}'
+          tags:
+            - tag: scope
+              value: capacity
         # ========================
         # TEMPERATURA
         # ========================
-        - uuid: f3b4d5e6a7c8b9d0e1f2a3b4c5d6e8f9
-          expression: 'last(/MikroTik SNMP - JPLS/mikrotik.board.temp) >= {$TEMP.CRIT}'
-          name: 'Hardware: temperatura crítica da placa (>{$TEMP.CRIT}°C) - {HOST.NAME}'
-          opdata: 'Temperatura atual: {ITEM.LASTVALUE}'
+        - uuid: a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5e6
+          expression: 'last(/MikroTik SNMP - JPLS/sensor.temp.cpu.mikrotik) >= {$TEMP.MAX.CRIT}'
+          name: 'MikroTik: temperatura crítica da CPU ({$TEMP.MAX.CRIT}°C) em {HOST.NAME}'
+          opdata: 'Temperatura: {ITEM.LASTVALUE}'
           priority: HIGH
           description: |
-            A temperatura da placa principal está acima do limite crítico ({$TEMP.CRIT}°C).
-            Risco de dano permanente ao hardware.
-            Ação imediata: verifique ventilação do rack, temperatura do ambiente, filtros de ar.
-            MikroTik CCR/CRS têm ventoinhas — verifique se estão funcionando.
+            Temperatura da CPU acima do limite crítico.
+            Risco de throttling ou dano ao hardware. Verifique ventilação e ambiente do equipamento.
           tags:
             - tag: scope
-              value: availability
-        - uuid: a4c5e6f7b8d9c0e1f2a3b4c5d6e8f9a0
-          expression: 'last(/MikroTik SNMP - JPLS/mikrotik.board.temp) >= {$TEMP.WARN} and last(/MikroTik SNMP - JPLS/mikrotik.board.temp) < {$TEMP.CRIT}'
-          name: 'Hardware: temperatura elevada da placa (>{$TEMP.WARN}°C) - {HOST.NAME}'
-          opdata: 'Temperatura atual: {ITEM.LASTVALUE}'
+              value: hardware
+        - uuid: b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6f7
+          expression: 'last(/MikroTik SNMP - JPLS/sensor.temp.cpu.mikrotik) >= {$TEMP.MAX.WARN} and last(/MikroTik SNMP - JPLS/sensor.temp.cpu.mikrotik) < {$TEMP.MAX.CRIT}'
+          name: 'MikroTik: temperatura da CPU elevada (> {$TEMP.MAX.WARN}°C) em {HOST.NAME}'
+          opdata: 'Temperatura: {ITEM.LASTVALUE}'
           priority: WARNING
-          description: |
-            A temperatura da placa está acima do limite de alerta ({$TEMP.WARN}°C).
-            Monitore a tendência e verifique as condições de ventilação do ambiente.
           dependencies:
-            - name: 'Hardware: temperatura crítica da placa (>{$TEMP.CRIT}°C) - {HOST.NAME}'
-              expression: 'last(/MikroTik SNMP - JPLS/mikrotik.board.temp) >= {$TEMP.CRIT}'
+            - name: 'MikroTik: temperatura crítica da CPU ({$TEMP.MAX.CRIT}°C) em {HOST.NAME}'
+              expression: 'last(/MikroTik SNMP - JPLS/sensor.temp.cpu.mikrotik) >= {$TEMP.MAX.CRIT}'
           tags:
             - tag: scope
-              value: availability
+              value: hardware
         # ========================
-        # TENSÃO
+        # VPN
         # ========================
-        - uuid: b5d6f7a8c9e0d1f2a3b4c5d6e8f9a0b1
-          expression: 'last(/MikroTik SNMP - JPLS/mikrotik.voltage) < {$VOLTAGE.MIN.WARN} and last(/MikroTik SNMP - JPLS/mikrotik.voltage) > 0'
-          name: 'Hardware: tensão de alimentação baixa (<{$VOLTAGE.MIN.WARN}V) - {HOST.NAME}'
-          opdata: 'Tensão atual: {ITEM.LASTVALUE}'
-          priority: HIGH
-          description: |
-            A tensão de alimentação do equipamento está abaixo do mínimo aceitável ({$VOLTAGE.MIN.WARN}V).
-            Causas possíveis: falha na fonte de alimentação, instabilidade elétrica, cabo PoE inadequado.
-            Risco de reinicialização inesperada ou dano ao equipamento.
+        - uuid: c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7a8
+          expression: 'last(/MikroTik SNMP - JPLS/vpn.l2tp.sessions.active) >= {$VPN.SESSIONS.MAX}'
+          name: 'MikroTik: número de sessões VPN próximo do limite ({HOST.NAME})'
+          opdata: 'Sessões ativas: {ITEM.LASTVALUE}'
+          priority: WARNING
+          description: 'O número de sessões VPN L2TP ativas está próximo do limite configurado.'
           tags:
             - tag: scope
-              value: availability
+              value: capacity
       graphs:
-        - uuid: c6e7a8b9d0f1e2a3b4c5d6e8f9a0b1c2
-          name: 'CPU: utilização (%)'
+        - uuid: d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8b9
+          name: 'MikroTik: CPU e Memória'
           graph_items:
             - sortorder: '0'
               color: E6002D
-              drawtype: FILLED_REGION
               item:
                 host: 'MikroTik SNMP - JPLS'
-                key: 'system.cpu.util'
-        - uuid: d7f8b9c0e1a2f3b4c5d6e8f9a0b1c2d3
-          name: 'Memória: utilização e distribuição'
-          graph_items:
-            - sortorder: '0'
-              color: E6002D
-              drawtype: FILLED_REGION
-              item:
-                host: 'MikroTik SNMP - JPLS'
-                key: 'vm.memory.used'
+                key: 'system.cpu.util.mikrotik'
             - sortorder: '1'
-              color: 00AA00
-              drawtype: FILLED_REGION
+              color: 0080FF
               item:
                 host: 'MikroTik SNMP - JPLS'
-                key: 'vm.memory.free'
-        - uuid: e8a9c0d1f2b3a4c5d6e8f9a0b1c2d3e4
-          name: 'Hardware: temperatura da placa e CPU (°C)'
+                key: 'vm.memory.util.mikrotik'
+        - uuid: e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9c0
+          name: 'MikroTik: Temperatura'
           graph_items:
             - sortorder: '0'
-              color: E6002D
-              item:
-                host: 'MikroTik SNMP - JPLS'
-                key: 'mikrotik.board.temp'
-            - sortorder: '1'
               color: FF8800
               item:
                 host: 'MikroTik SNMP - JPLS'
-                key: 'mikrotik.cpu.temp'
-        - uuid: f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4
-          name: 'Hardware: tensão de alimentação (V)'
-          graph_items:
-            - sortorder: '0'
-              color: 0080FF
-              drawtype: BOLD_LINE
+                key: 'sensor.temp.cpu.mikrotik'
+            - sortorder: '1'
+              color: FFCC00
               item:
                 host: 'MikroTik SNMP - JPLS'
-                key: 'mikrotik.voltage'
+                key: 'sensor.temp.board.mikrotik'
+        - uuid: f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0d1
+          name: 'MikroTik: Clientes Wireless e Sessões VPN'
+          graph_items:
+            - sortorder: '0'
+              color: 00CC00
+              item:
+                host: 'MikroTik SNMP - JPLS'
+                key: 'wireless.clients.total'
+            - sortorder: '1'
+              color: 9900CC
+              item:
+                host: 'MikroTik SNMP - JPLS'
+                key: 'vpn.l2tp.sessions.active'
