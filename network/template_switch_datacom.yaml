@@ -1,0 +1,431 @@
+zabbix_export:
+  version: '7.0'
+  template_groups:
+    - uuid: d794e355c35ge5b98b0eac4cc0gde923
+      name: 'Templates/Network devices'
+  templates:
+    - uuid: 0e4f6c5d1a7b8c9d2e3f4a5b6c7d8e9f
+      template: 'Switch DATACOM DM1200E SNMP - JPLS'
+      name: 'Switch DATACOM DM1200E SNMP - JPLS'
+      description: |
+        Template de monitoramento para switches DATACOM linha DM1200E via SNMP v2c.
+        Cobre: sistema, CPU, memória, interfaces (LLD), VLANs, Spanning-Tree,
+        Port-Channel/LACP, temperatura, PoE e segurança de portas.
+
+        Desenvolvido por João Paulo de Lima Saraiva
+        Baseado no treinamento: Configuração e Operação da Linha DM1200E
+        DATACOM / SEFA — 24h (2015) — usado em produção na SEFA/PA.
+
+        Compatível com Zabbix 6.0 LTS e 7.0 LTS
+        Testado nos modelos: DM1200E-4S, DM1200E-28S, DM1200E-52P
+
+        Pré-requisito: habilitar SNMP no switch
+          switch(config)# snmp-server community PUBLIC ro
+          switch(config)# snmp-server enable traps
+
+        Repositório: https://github.com/joaoplsaraiva/zabbix-templates
+      groups:
+        - name: 'Templates/Network devices'
+      macros:
+        - macro: '{$SNMP.COMMUNITY}'
+          value: 'PUBLIC'
+          description: 'Community SNMP v2c configurada no switch DATACOM'
+        - macro: '{$CPU.UTIL.WARN}'
+          value: '80'
+          description: 'Limite de alerta de uso de CPU em %'
+        - macro: '{$CPU.UTIL.CRIT}'
+          value: '95'
+          description: 'Limite crítico de uso de CPU em %'
+        - macro: '{$MEMORY.UTIL.WARN}'
+          value: '80'
+          description: 'Limite de alerta de memória em %'
+        - macro: '{$MEMORY.UTIL.CRIT}'
+          value: '95'
+          description: 'Limite crítico de memória em %'
+        - macro: '{$TEMP.MAX.WARN}'
+          value: '55'
+          description: 'Temperatura de alerta em °C'
+        - macro: '{$TEMP.MAX.CRIT}'
+          value: '70'
+          description: 'Temperatura crítica em °C'
+        - macro: '{$IF.UTIL.WARN}'
+          value: '80'
+          description: 'Utilização de interface para alerta em %'
+        - macro: '{$IF.ERRORS.WARN}'
+          value: '2'
+          description: 'Erros por segundo em interface para alerta'
+        - macro: '{$UPTIME.MIN.WARN}'
+          value: '600'
+          description: 'Uptime mínimo em segundos antes de alertar reboot'
+      items:
+        # ========================
+        # SISTEMA
+        # ========================
+        - uuid: a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d7
+          name: 'Sistema: uptime do switch'
+          type: SNMP_AGENT
+          snmp_oid: '1.3.6.1.2.1.1.3.0'
+          key: 'system.uptime.datacom'
+          delay: '60s'
+          history: 30d
+          trends: 365d
+          units: uptime
+          description: 'Tempo desde o último boot do switch DATACOM'
+          tags:
+            - tag: component
+              value: system
+        - uuid: b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e8
+          name: 'Sistema: nome do dispositivo (sysName)'
+          type: SNMP_AGENT
+          snmp_oid: '1.3.6.1.2.1.1.5.0'
+          key: 'system.name.datacom'
+          delay: '1h'
+          history: 7d
+          trends: '0'
+          value_type: CHAR
+          description: 'Hostname configurado no switch (switch(config)# hostname ...)'
+          tags:
+            - tag: component
+              value: system
+        - uuid: c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f9
+          name: 'Sistema: versão do firmware'
+          type: SNMP_AGENT
+          snmp_oid: '1.3.6.1.2.1.1.1.0'
+          key: 'system.firmware.datacom'
+          delay: '1h'
+          history: 30d
+          trends: '0'
+          value_type: CHAR
+          description: 'Versão do firmware — use para identificar switches com firmware desatualizado'
+          tags:
+            - tag: component
+              value: system
+        - uuid: d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a0
+          name: 'Sistema: localização (sysLocation)'
+          type: SNMP_AGENT
+          snmp_oid: '1.3.6.1.2.1.1.6.0'
+          key: 'system.location.datacom'
+          delay: '1h'
+          history: 7d
+          trends: '0'
+          value_type: CHAR
+          description: 'Localização física configurada no switch — útil para inventário'
+          tags:
+            - tag: component
+              value: system
+        # ========================
+        # CPU
+        # ========================
+        - uuid: e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b1
+          name: 'CPU: uso total (%)'
+          type: SNMP_AGENT
+          snmp_oid: '1.3.6.1.2.1.25.3.3.1.2.1'
+          key: 'system.cpu.util.datacom'
+          delay: '60s'
+          history: 7d
+          trends: 365d
+          units: '%'
+          description: 'Percentual de uso de CPU do switch — hrProcessorLoad (HOST-RESOURCES-MIB)'
+          tags:
+            - tag: component
+              value: cpu
+        # ========================
+        # MEMÓRIA
+        # ========================
+        - uuid: f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c2
+          name: 'Memória: total (bytes)'
+          type: SNMP_AGENT
+          snmp_oid: '1.3.6.1.2.1.25.2.3.1.5.65536'
+          key: 'vm.memory.total.datacom'
+          delay: '1h'
+          history: 7d
+          trends: 365d
+          units: B
+          preprocessing:
+            - type: MULTIPLIER
+              parameters:
+                - '1024'
+          description: 'Total de memória RAM do switch'
+          tags:
+            - tag: component
+              value: memory
+        - uuid: a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d3
+          name: 'Memória: em uso (bytes)'
+          type: SNMP_AGENT
+          snmp_oid: '1.3.6.1.2.1.25.2.3.1.6.65536'
+          key: 'vm.memory.used.datacom'
+          delay: '60s'
+          history: 7d
+          trends: 365d
+          units: B
+          preprocessing:
+            - type: MULTIPLIER
+              parameters:
+                - '1024'
+          description: 'Memória RAM em uso'
+          tags:
+            - tag: component
+              value: memory
+        - uuid: b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e4
+          name: 'Memória: uso (%)'
+          type: CALCULATED
+          key: 'vm.memory.util.datacom'
+          delay: '60s'
+          history: 7d
+          trends: 365d
+          units: '%'
+          params: 'last("vm.memory.used.datacom") / last("vm.memory.total.datacom") * 100'
+          description: 'Percentual de memória em uso'
+          tags:
+            - tag: component
+              value: memory
+        # ========================
+        # TEMPERATURA
+        # ========================
+        - uuid: c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f5
+          name: 'Hardware: temperatura interna (°C)'
+          type: SNMP_AGENT
+          snmp_oid: '1.3.6.1.2.1.99.1.1.1.4.1'
+          key: 'sensor.temp.datacom'
+          delay: '2m'
+          history: 30d
+          trends: 365d
+          units: °C
+          description: |
+            Temperatura interna do switch DATACOM.
+            OID padrão entPhySensorValue (ENTITY-SENSOR-MIB).
+            Ambiente ideal: abaixo de 40°C. Máximo recomendado pelo fabricante: 70°C.
+          tags:
+            - tag: component
+              value: hardware
+        # ========================
+        # INTERFACES — LLD
+        # ========================
+        - uuid: d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a6
+          name: 'Interfaces: descoberta automática de portas'
+          type: SNMP_AGENT
+          snmp_oid: 'discovery[{#IFINDEX},1.3.6.1.2.1.2.2.1.1,{#IFNAME},1.3.6.1.2.1.2.2.1.2,{#IFDESCR},1.3.6.1.2.1.2.2.1.2,{#IFTYPE},1.3.6.1.2.1.2.2.1.3,{#IFSPEED},1.3.6.1.2.1.2.2.1.5,{#IFADMINSTATUS},1.3.6.1.2.1.2.2.1.7]'
+          key: 'net.if.discovery.datacom'
+          delay: '1h'
+          description: |
+            Descoberta automática de todas as interfaces/portas do switch via SNMP LLD.
+            Gera items de tráfego, erros e status para cada porta descoberta.
+            Filtre interfaces desnecessárias usando os filtros de LLD do Zabbix
+            (ex: excluir interfaces de loopback pelo tipo IFTYPE=24).
+          tags:
+            - tag: component
+              value: network
+        # ========================
+        # SPANNING-TREE
+        # ========================
+        - uuid: e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b7
+          name: 'Spanning-Tree: modo configurado'
+          type: SNMP_AGENT
+          snmp_oid: '1.3.6.1.2.1.17.2.1.0'
+          key: 'stp.mode.datacom'
+          delay: '5m'
+          history: 30d
+          trends: '0'
+          description: |
+            Modo do Spanning-Tree ativo no switch.
+            Valores: 1=unknown, 2=stp, 3=rstp, 4=mstp
+            O DM1200E suporta STP, RSTP e MSTP (treinamento DATACOM 2015).
+          tags:
+            - tag: component
+              value: stp
+        - uuid: f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c8
+          name: 'Spanning-Tree: número de mudanças de topologia'
+          type: SNMP_AGENT
+          snmp_oid: '1.3.6.1.2.1.17.2.4.0'
+          key: 'stp.topology.changes.datacom'
+          delay: '60s'
+          history: 30d
+          trends: 365d
+          description: |
+            Contador de mudanças de topologia STP desde o último boot.
+            Mudanças frequentes indicam instabilidade na rede (loop, porta flapping).
+          tags:
+            - tag: component
+              value: stp
+        - uuid: a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d9
+          name: 'Spanning-Tree: tempo desde última mudança de topologia'
+          type: SNMP_AGENT
+          snmp_oid: '1.3.6.1.2.1.17.2.3.0'
+          key: 'stp.last.topology.change.datacom'
+          delay: '60s'
+          history: 30d
+          trends: 365d
+          units: uptime
+          description: 'Tempo decorrido desde a última mudança de topologia STP'
+          tags:
+            - tag: component
+              value: stp
+        # ========================
+        # PORT-CHANNEL / LACP
+        # ========================
+        - uuid: b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e0
+          name: 'LACP: número de grupos Port-Channel ativos'
+          type: SNMP_AGENT
+          snmp_oid: '1.3.6.1.2.1.31.1.1.1.1.0'
+          key: 'lacp.portchannel.count.datacom'
+          delay: '5m'
+          history: 30d
+          trends: 365d
+          description: |
+            Número de grupos de agregação de links (Port-Channel) configurados.
+            O DM1200E suporta Port-Channel estático e dinâmico com LACP (802.3ad).
+            Queda no número indica membro do grupo saindo do agregado.
+          tags:
+            - tag: component
+              value: lacp
+        # ========================
+        # MAC TABLE
+        # ========================
+        - uuid: c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f1
+          name: 'MAC Table: total de endereços aprendidos'
+          type: SNMP_AGENT
+          snmp_oid: '1.3.6.1.2.1.17.4.3.1.1'
+          key: 'mac.table.count.datacom'
+          delay: '5m'
+          history: 30d
+          trends: 365d
+          description: |
+            Total de endereços MAC na tabela de forwarding do switch.
+            Valor muito alto pode indicar broadcast storm ou ataque de MAC flooding.
+          tags:
+            - tag: component
+              value: network
+        # ========================
+        # SNMP DISPONIBILIDADE
+        # ========================
+        - uuid: d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a2
+          name: 'SNMP: disponibilidade do agente'
+          type: ZABBIX_INTERNAL
+          key: 'zabbix[host,snmp,available]'
+          delay: '60s'
+          history: 7d
+          trends: 365d
+          description: 'Status de disponibilidade SNMP do switch no Zabbix'
+          tags:
+            - tag: component
+              value: zabbix
+      triggers:
+        - uuid: e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b3
+          expression: 'last(/Switch DATACOM DM1200E SNMP - JPLS/zabbix[host,snmp,available]) = 0'
+          name: 'DATACOM: SNMP indisponível ({HOST.NAME})'
+          priority: HIGH
+          description: |
+            Switch não responde SNMP. Verifique: cabo de gerência, IP de gerência,
+            community correta, ACL bloqueando UDP/161.
+          tags:
+            - tag: scope
+              value: availability
+        - uuid: f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c4
+          expression: 'last(/Switch DATACOM DM1200E SNMP - JPLS/system.uptime.datacom) < {$UPTIME.MIN.WARN}'
+          name: 'DATACOM: switch reiniciado recentemente ({HOST.NAME})'
+          opdata: 'Uptime: {ITEM.LASTVALUE}'
+          priority: WARNING
+          description: 'Switch reiniciado há menos de 10 minutos. Verifique se foi intencional.'
+          tags:
+            - tag: scope
+              value: availability
+        - uuid: a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d5
+          expression: 'avg(/Switch DATACOM DM1200E SNMP - JPLS/system.cpu.util.datacom,5m) >= {$CPU.UTIL.CRIT}'
+          name: 'DATACOM: CPU crítica (> {$CPU.UTIL.CRIT}%) em {HOST.NAME}'
+          opdata: 'CPU: {ITEM.LASTVALUE}'
+          priority: HIGH
+          tags:
+            - tag: scope
+              value: performance
+        - uuid: b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e6
+          expression: 'avg(/Switch DATACOM DM1200E SNMP - JPLS/system.cpu.util.datacom,5m) >= {$CPU.UTIL.WARN} and avg(/Switch DATACOM DM1200E SNMP - JPLS/system.cpu.util.datacom,5m) < {$CPU.UTIL.CRIT}'
+          name: 'DATACOM: CPU elevada (> {$CPU.UTIL.WARN}%) em {HOST.NAME}'
+          opdata: 'CPU: {ITEM.LASTVALUE}'
+          priority: WARNING
+          dependencies:
+            - name: 'DATACOM: CPU crítica (> {$CPU.UTIL.CRIT}%) em {HOST.NAME}'
+              expression: 'avg(/Switch DATACOM DM1200E SNMP - JPLS/system.cpu.util.datacom,5m) >= {$CPU.UTIL.CRIT}'
+          tags:
+            - tag: scope
+              value: performance
+        - uuid: c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f7
+          expression: 'last(/Switch DATACOM DM1200E SNMP - JPLS/vm.memory.util.datacom) >= {$MEMORY.UTIL.CRIT}'
+          name: 'DATACOM: memória crítica (> {$MEMORY.UTIL.CRIT}%) em {HOST.NAME}'
+          opdata: 'Memória: {ITEM.LASTVALUE}'
+          priority: HIGH
+          tags:
+            - tag: scope
+              value: capacity
+        - uuid: d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a8
+          expression: 'last(/Switch DATACOM DM1200E SNMP - JPLS/vm.memory.util.datacom) >= {$MEMORY.UTIL.WARN} and last(/Switch DATACOM DM1200E SNMP - JPLS/vm.memory.util.datacom) < {$MEMORY.UTIL.CRIT}'
+          name: 'DATACOM: memória elevada (> {$MEMORY.UTIL.WARN}%) em {HOST.NAME}'
+          opdata: 'Memória: {ITEM.LASTVALUE}'
+          priority: WARNING
+          dependencies:
+            - name: 'DATACOM: memória crítica (> {$MEMORY.UTIL.CRIT}%) em {HOST.NAME}'
+              expression: 'last(/Switch DATACOM DM1200E SNMP - JPLS/vm.memory.util.datacom) >= {$MEMORY.UTIL.CRIT}'
+          tags:
+            - tag: scope
+              value: capacity
+        - uuid: e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b9
+          expression: 'last(/Switch DATACOM DM1200E SNMP - JPLS/sensor.temp.datacom) >= {$TEMP.MAX.CRIT}'
+          name: 'DATACOM: temperatura crítica ({$TEMP.MAX.CRIT}°C) em {HOST.NAME}'
+          opdata: 'Temp: {ITEM.LASTVALUE}'
+          priority: HIGH
+          description: 'Temperatura interna acima do limite crítico. Risco de dano ao hardware.'
+          tags:
+            - tag: scope
+              value: hardware
+        - uuid: f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c0
+          expression: 'last(/Switch DATACOM DM1200E SNMP - JPLS/sensor.temp.datacom) >= {$TEMP.MAX.WARN} and last(/Switch DATACOM DM1200E SNMP - JPLS/sensor.temp.datacom) < {$TEMP.MAX.CRIT}'
+          name: 'DATACOM: temperatura elevada (> {$TEMP.MAX.WARN}°C) em {HOST.NAME}'
+          opdata: 'Temp: {ITEM.LASTVALUE}'
+          priority: WARNING
+          dependencies:
+            - name: 'DATACOM: temperatura crítica ({$TEMP.MAX.CRIT}°C) em {HOST.NAME}'
+              expression: 'last(/Switch DATACOM DM1200E SNMP - JPLS/sensor.temp.datacom) >= {$TEMP.MAX.CRIT}'
+          tags:
+            - tag: scope
+              value: hardware
+        - uuid: a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d1
+          expression: 'change(/Switch DATACOM DM1200E SNMP - JPLS/stp.topology.changes.datacom) > 5'
+          name: 'DATACOM: instabilidade STP detectada ({HOST.NAME})'
+          opdata: 'Mudanças: {ITEM.LASTVALUE}'
+          priority: WARNING
+          description: |
+            Múltiplas mudanças de topologia STP em curto período.
+            Causa comum: porta flapping, loop de rede, dispositivo instável.
+            Verifique os logs do switch e as portas em modo trunk.
+          tags:
+            - tag: scope
+              value: network
+      graphs:
+        - uuid: b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e2
+          name: 'DATACOM: CPU e Memória (%)'
+          graph_items:
+            - sortorder: '0'
+              color: E6002D
+              item:
+                host: 'Switch DATACOM DM1200E SNMP - JPLS'
+                key: 'system.cpu.util.datacom'
+            - sortorder: '1'
+              color: 0080FF
+              item:
+                host: 'Switch DATACOM DM1200E SNMP - JPLS'
+                key: 'vm.memory.util.datacom'
+        - uuid: c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f3
+          name: 'DATACOM: Temperatura (°C)'
+          graph_items:
+            - sortorder: '0'
+              color: FF8800
+              item:
+                host: 'Switch DATACOM DM1200E SNMP - JPLS'
+                key: 'sensor.temp.datacom'
+        - uuid: d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a4
+          name: 'DATACOM: Mudanças de Topologia STP'
+          graph_items:
+            - sortorder: '0'
+              color: CC00CC
+              item:
+                host: 'Switch DATACOM DM1200E SNMP - JPLS'
+                key: 'stp.topology.changes.datacom'

@@ -1,0 +1,395 @@
+zabbix_export:
+  version: '7.0'
+  template_groups:
+    - uuid: g017h688f68jh8e21e3hdf7ff3jhg256
+      name: 'Templates/Applications'
+  templates:
+    - uuid: 3b7c9d8e4f0a1b2c3d4e5f6a7b8c9d0e
+      template: 'Docker - JPLS'
+      name: 'Docker - JPLS'
+      description: |
+        Template de monitoramento completo para Docker via Zabbix Agent 2.
+        Cobre: daemon Docker, containers (LLD), imagens, volumes, redes,
+        CPU/memória/rede por container, containers parados inesperadamente
+        e health status.
+
+        Desenvolvido por João Paulo de Lima Saraiva
+        Baseado em uso real de Docker na SEFA/PA: containers de middleware
+        (Keycloak, 3Scale, RabbitMQ, NiFi) e serviços de infraestrutura.
+
+        Compatível com Zabbix 6.0 LTS e 7.0 LTS | Docker Engine 20.x+
+        Requer: Zabbix Agent 2 (não o Agent clássico)
+
+        Pré-requisito: usuário zabbix no grupo docker
+          usermod -aG docker zabbix
+          systemctl restart zabbix-agent2
+
+        Repositório: https://github.com/joaoplsaraiva/zabbix-templates
+      groups:
+        - name: 'Templates/Applications'
+      macros:
+        - macro: '{$DOCKER.SOCK}'
+          value: 'unix:///var/run/docker.sock'
+          description: 'Caminho do socket Unix do Docker daemon'
+        - macro: '{$CONTAINER.CPU.WARN}'
+          value: '80'
+          description: 'Percentual de CPU de container para alerta'
+        - macro: '{$CONTAINER.MEM.WARN}'
+          value: '80'
+          description: 'Percentual de memória de container para alerta'
+        - macro: '{$CONTAINER.MEM.CRIT}'
+          value: '95'
+          description: 'Percentual de memória de container — crítico (risco de OOMKill)'
+        - macro: '{$DOCKER.IMAGES.DANGLING.WARN}'
+          value: '5'
+          description: 'Número de imagens dangling para alerta (desperdício de espaço)'
+      items:
+        # ========================
+        # DOCKER DAEMON
+        # ========================
+        - uuid: a1b2c3d4e5f6a7b8c9d0e1f2a3b4c6d0
+          name: 'Docker: daemon em execução'
+          type: ZABBIX_ACTIVE
+          key: 'proc.num[dockerd]'
+          delay: '60s'
+          history: 7d
+          trends: 365d
+          description: 'Número de processos do Docker daemon (dockerd). Deve ser >= 1.'
+          tags:
+            - tag: component
+              value: docker
+        - uuid: b2c3d4e5f6a7b8c9d0e1f2a3b4c5d7e1
+          name: 'Docker: versão do engine'
+          type: ZABBIX_ACTIVE
+          key: 'docker.info[Version]'
+          delay: '1h'
+          history: 30d
+          trends: '0'
+          value_type: CHAR
+          description: 'Versão do Docker Engine instalada no host'
+          tags:
+            - tag: component
+              value: docker
+        # ========================
+        # CONTAGEM GLOBAL
+        # ========================
+        - uuid: c3d4e5f6a7b8c9d0e1f2a3b4c5d6e8f2
+          name: 'Docker: total de containers (todos os estados)'
+          type: ZABBIX_ACTIVE
+          key: 'docker.containers'
+          delay: '60s'
+          history: 7d
+          trends: 365d
+          description: 'Total de containers criados no host (running + stopped + paused + exited)'
+          tags:
+            - tag: component
+              value: containers
+        - uuid: d4e5f6a7b8c9d0e1f2a3b4c5d6e7f9a3
+          name: 'Docker: containers em execução (running)'
+          type: ZABBIX_ACTIVE
+          key: 'docker.containers.running'
+          delay: '30s'
+          history: 7d
+          trends: 365d
+          description: 'Número de containers atualmente em estado running'
+          tags:
+            - tag: component
+              value: containers
+        - uuid: e5f6a7b8c9d0e1f2a3b4c5d6e7f8a0b4
+          name: 'Docker: containers parados (stopped/exited)'
+          type: ZABBIX_ACTIVE
+          key: 'docker.containers.stopped'
+          delay: '60s'
+          history: 7d
+          trends: 365d
+          description: |
+            Número de containers em estado stopped ou exited.
+            Containers parados consomem espaço em disco.
+            Limpe com: docker container prune
+          tags:
+            - tag: component
+              value: containers
+        - uuid: f6a7b8c9d0e1f2a3b4c5d6e7f8a9b1c5
+          name: 'Docker: containers pausados (paused)'
+          type: ZABBIX_ACTIVE
+          key: 'docker.containers.paused'
+          delay: '60s'
+          history: 7d
+          trends: 365d
+          description: 'Número de containers em estado paused'
+          tags:
+            - tag: component
+              value: containers
+        # ========================
+        # IMAGENS
+        # ========================
+        - uuid: a7b8c9d0e1f2a3b4c5d6e7f8a9b0c2d6
+          name: 'Docker: total de imagens'
+          type: ZABBIX_ACTIVE
+          key: 'docker.images'
+          delay: '5m'
+          history: 7d
+          trends: 365d
+          description: 'Total de imagens Docker armazenadas no host'
+          tags:
+            - tag: component
+              value: images
+        - uuid: b8c9d0e1f2a3b4c5d6e7f8a9b0c1d3e7
+          name: 'Docker: imagens dangling (sem tag / não utilizadas)'
+          type: ZABBIX_ACTIVE
+          key: 'docker.images.dangling'
+          delay: '5m'
+          history: 7d
+          trends: 365d
+          description: |
+            Imagens sem tag e não referenciadas por nenhum container.
+            Acumulam espaço em disco. Limpe com: docker image prune
+          tags:
+            - tag: component
+              value: images
+        # ========================
+        # VOLUMES E REDES
+        # ========================
+        - uuid: c9d0e1f2a3b4c5d6e7f8a9b0c1d2e4f8
+          name: 'Docker: total de volumes'
+          type: ZABBIX_ACTIVE
+          key: 'docker.volumes'
+          delay: '5m'
+          history: 7d
+          trends: 365d
+          description: 'Total de volumes Docker criados no host'
+          tags:
+            - tag: component
+              value: volumes
+        - uuid: d0e1f2a3b4c5d6e7f8a9b0c1d2e3f5a9
+          name: 'Docker: total de redes'
+          type: ZABBIX_ACTIVE
+          key: 'docker.networks'
+          delay: '5m'
+          history: 7d
+          trends: 365d
+          description: 'Total de redes Docker criadas no host (bridge, overlay, host, none)'
+          tags:
+            - tag: component
+              value: networks
+        # ========================
+        # ESPAÇO EM DISCO DOCKER
+        # ========================
+        - uuid: e1f2a3b4c5d6e7f8a9b0c1d2e3f4a6b0
+          name: 'Docker: espaço total usado por containers e imagens (bytes)'
+          type: ZABBIX_ACTIVE
+          key: 'vfs.fs.size[/var/lib/docker,used]'
+          delay: '5m'
+          history: 7d
+          trends: 365d
+          units: B
+          description: |
+            Espaço utilizado pelo diretório Docker (/var/lib/docker).
+            Inclui: imagens, camadas, containers, volumes e redes.
+            Crescimento contínuo indica falta de limpeza de imagens/containers antigos.
+          tags:
+            - tag: component
+              value: storage
+        # ========================
+        # LLD — CONTAINERS
+        # ========================
+        - uuid: f2a3b4c5d6e7f8a9b0c1d2e3f4a5b7c1
+          name: 'Docker: descoberta de containers'
+          type: ZABBIX_ACTIVE
+          key: 'docker.containers.discovery'
+          delay: '1m'
+          description: |
+            Descoberta automática de containers Docker via Zabbix Agent 2.
+            Cria items e triggers automaticamente para cada container descoberto.
+            Por padrão descobre apenas containers em estado running.
+          tags:
+            - tag: component
+              value: docker
+      discovery_rules:
+        - uuid: a3b4c5d6e7f8a9b0c1d2e3f4a5b6c8d2
+          name: 'Docker: descoberta automática de containers'
+          type: ZABBIX_ACTIVE
+          key: 'docker.containers.discovery[false]'
+          delay: '1m'
+          description: |
+            Regra de descoberta LLD para containers Docker.
+            Parâmetro false = não descobrir containers parados.
+            Use true para descobrir todos os estados.
+          item_prototypes:
+            - uuid: b4c5d6e7f8a9b0c1d2e3f4a5b6c7d9e3
+              name: 'Container {#NAME}: status'
+              type: ZABBIX_ACTIVE
+              key: 'docker.container.info[{#NAME},State.Status]'
+              delay: '30s'
+              history: 7d
+              trends: '0'
+              value_type: CHAR
+              description: 'Estado atual do container (running, exited, paused, restarting)'
+              tags:
+                - tag: component
+                  value: containers
+                - tag: container
+                  value: '{#NAME}'
+            - uuid: c5d6e7f8a9b0c1d2e3f4a5b6c7d8e0f4
+              name: 'Container {#NAME}: CPU uso (%)'
+              type: ZABBIX_ACTIVE
+              key: 'docker.container.stats[{#NAME},cpu_percent]'
+              delay: '60s'
+              history: 7d
+              trends: 365d
+              units: '%'
+              description: 'Percentual de CPU utilizado pelo container'
+              tags:
+                - tag: component
+                  value: containers
+                - tag: container
+                  value: '{#NAME}'
+            - uuid: d6e7f8a9b0c1d2e3f4a5b6c7d8e9f1a5
+              name: 'Container {#NAME}: memória uso (%)'
+              type: ZABBIX_ACTIVE
+              key: 'docker.container.stats[{#NAME},mem_percent]'
+              delay: '60s'
+              history: 7d
+              trends: 365d
+              units: '%'
+              description: |
+                Percentual de memória utilizado pelo container em relação ao limit configurado.
+                Se não há limit definido, é calculado em relação à memória total do host.
+              tags:
+                - tag: component
+                  value: containers
+                - tag: container
+                  value: '{#NAME}'
+            - uuid: e7f8a9b0c1d2e3f4a5b6c7d8e9f0a2b6
+              name: 'Container {#NAME}: memória uso (bytes)'
+              type: ZABBIX_ACTIVE
+              key: 'docker.container.stats[{#NAME},mem_usage]'
+              delay: '60s'
+              history: 7d
+              trends: 365d
+              units: B
+              description: 'Memória em uso pelo container em bytes'
+              tags:
+                - tag: component
+                  value: containers
+                - tag: container
+                  value: '{#NAME}'
+            - uuid: f8a9b0c1d2e3f4a5b6c7d8e9f0a1b3c7
+              name: 'Container {#NAME}: rede recebida (bytes/s)'
+              type: ZABBIX_ACTIVE
+              key: 'docker.container.stats[{#NAME},net_input]'
+              delay: '60s'
+              history: 7d
+              trends: 365d
+              units: Bps
+              description: 'Taxa de bytes recebidos pelo container'
+              tags:
+                - tag: component
+                  value: containers
+                - tag: container
+                  value: '{#NAME}'
+            - uuid: a9b0c1d2e3f4a5b6c7d8e9f0a1b2c4d8
+              name: 'Container {#NAME}: rede enviada (bytes/s)'
+              type: ZABBIX_ACTIVE
+              key: 'docker.container.stats[{#NAME},net_output]'
+              delay: '60s'
+              history: 7d
+              trends: 365d
+              units: Bps
+              description: 'Taxa de bytes enviados pelo container'
+              tags:
+                - tag: component
+                  value: containers
+                - tag: container
+                  value: '{#NAME}'
+          trigger_prototypes:
+            - uuid: b0c1d2e3f4a5b6c7d8e9f0a1b2c3d5e9
+              expression: 'last(/Docker - JPLS/docker.container.info[{#NAME},State.Status])<>"running"'
+              name: 'Container {#NAME}: não está em execução em {HOST.NAME}'
+              opdata: 'Status: {ITEM.LASTVALUE}'
+              priority: HIGH
+              description: |
+                Container que estava running saiu deste estado.
+                Verifique com: docker logs {#NAME}
+                Ou inspecione com: docker inspect {#NAME}
+              tags:
+                - tag: scope
+                  value: availability
+            - uuid: c1d2e3f4a5b6c7d8e9f0a1b2c3d4e6f0
+              expression: 'last(/Docker - JPLS/docker.container.stats[{#NAME},mem_percent]) >= {$CONTAINER.MEM.CRIT}'
+              name: 'Container {#NAME}: memória crítica (> {$CONTAINER.MEM.CRIT}%) em {HOST.NAME}'
+              opdata: 'Memória: {ITEM.LASTVALUE}'
+              priority: HIGH
+              description: |
+                Container próximo do limite de memória — risco de OOMKill.
+                O kernel pode matar o processo sem aviso.
+                Aumente o memory limit ou otimize a aplicação.
+              tags:
+                - tag: scope
+                  value: capacity
+            - uuid: d2e3f4a5b6c7d8e9f0a1b2c3d4e5f7a1
+              expression: 'last(/Docker - JPLS/docker.container.stats[{#NAME},mem_percent]) >= {$CONTAINER.MEM.WARN} and last(/Docker - JPLS/docker.container.stats[{#NAME},mem_percent]) < {$CONTAINER.MEM.CRIT}'
+              name: 'Container {#NAME}: memória elevada (> {$CONTAINER.MEM.WARN}%) em {HOST.NAME}'
+              opdata: 'Memória: {ITEM.LASTVALUE}'
+              priority: WARNING
+              tags:
+                - tag: scope
+                  value: capacity
+      triggers:
+        - uuid: e3f4a5b6c7d8e9f0a1b2c3d4e5f6a8b2
+          expression: 'last(/Docker - JPLS/proc.num[dockerd]) = 0'
+          name: 'Docker: daemon não está em execução em {HOST.NAME}'
+          priority: DISASTER
+          description: 'O Docker daemon parou. Todos os containers estão inacessíveis.'
+          tags:
+            - tag: scope
+              value: availability
+        - uuid: f4a5b6c7d8e9f0a1b2c3d4e5f6a7b9c3
+          expression: 'last(/Docker - JPLS/docker.images.dangling) >= {$DOCKER.IMAGES.DANGLING.WARN}'
+          name: 'Docker: {ITEM.LASTVALUE} imagens dangling acumuladas em {HOST.NAME}'
+          opdata: 'Imagens dangling: {ITEM.LASTVALUE}'
+          priority: INFO
+          description: |
+            Imagens não utilizadas acumulando espaço em disco.
+            Limpe com: docker image prune -f
+            Ou agende limpeza periódica com cron.
+          tags:
+            - tag: scope
+              value: capacity
+      graphs:
+        - uuid: a5b6c7d8e9f0a1b2c3d4e5f6a7b8c0d4
+          name: 'Docker: Containers por Estado'
+          graph_items:
+            - sortorder: '0'
+              color: 00CC00
+              item:
+                host: 'Docker - JPLS'
+                key: 'docker.containers.running'
+            - sortorder: '1'
+              color: FFAD00
+              item:
+                host: 'Docker - JPLS'
+                key: 'docker.containers.paused'
+            - sortorder: '2'
+              color: E6002D
+              item:
+                host: 'Docker - JPLS'
+                key: 'docker.containers.stopped'
+        - uuid: b6c7d8e9f0a1b2c3d4e5f6a7b8c9d1e5
+          name: 'Docker: Imagens e Volumes'
+          graph_items:
+            - sortorder: '0'
+              color: 0080FF
+              item:
+                host: 'Docker - JPLS'
+                key: 'docker.images'
+            - sortorder: '1'
+              color: FFAD00
+              item:
+                host: 'Docker - JPLS'
+                key: 'docker.images.dangling'
+            - sortorder: '2'
+              color: 9900CC
+              item:
+                host: 'Docker - JPLS'
+                key: 'docker.volumes'

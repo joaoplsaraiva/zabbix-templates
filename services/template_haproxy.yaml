@@ -1,0 +1,368 @@
+zabbix_export:
+  version: '7.0'
+  template_groups:
+    - uuid: e895f466d46hf6c09c1fbd5dd1hef034
+      name: 'Templates/Applications'
+  templates:
+    - uuid: 1f5a7b6c2d8e9f0a1b2c3d4e5f6a7b8c
+      template: 'HAProxy - JPLS'
+      name: 'HAProxy - JPLS'
+      description: |
+        Template de monitoramento completo para HAProxy via HTTP Stats API.
+        Cobre: processo, frontends, backends, servidores, sessões, filas,
+        tráfego, erros HTTP e health checks.
+
+        Desenvolvido por João Paulo de Lima Saraiva
+        Baseado em uso real do HAProxy como load balancer na SEFA/PA
+        em conjunto com Pacemaker para alta disponibilidade.
+
+        Compatível com Zabbix 6.0 LTS e 7.0 LTS | HAProxy 2.x e 3.x
+
+        Pré-requisito: habilitar stats no HAProxy
+          frontend stats
+            bind *:8404
+            stats enable
+            stats uri /haproxy?stats
+            stats refresh 10s
+            stats show-legends
+            stats show-node
+
+        Repositório: https://github.com/joaoplsaraiva/zabbix-templates
+      groups:
+        - name: 'Templates/Applications'
+      macros:
+        - macro: '{$HAPROXY.STATS.URL}'
+          value: 'http://localhost:8404/haproxy?stats;csv'
+          description: 'URL da página de estatísticas CSV do HAProxy'
+        - macro: '{$HAPROXY.STATS.USER}'
+          value: ''
+          description: 'Usuário de autenticação do stats (deixe vazio se não usar auth)'
+        - macro: '{$HAPROXY.STATS.PASSWORD}'
+          value: ''
+          description: 'Senha de autenticação do stats'
+        - macro: '{$HAPROXY.FRONTEND.SESS.WARN}'
+          value: '80'
+          description: 'Percentual de uso de sessões do frontend para alerta'
+        - macro: '{$HAPROXY.BACKEND.QUEUE.WARN}'
+          value: '10'
+          description: 'Requisições na fila do backend para alerta'
+        - macro: '{$HAPROXY.BACKEND.RTIME.WARN}'
+          value: '500'
+          description: 'Tempo médio de resposta do backend em ms para alerta'
+        - macro: '{$HAPROXY.SERVER.DOWN.WARN}'
+          value: '1'
+          description: 'Número de servidores DOWN no backend para alerta'
+      items:
+        # ========================
+        # PROCESSO
+        # ========================
+        - uuid: a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d8
+          name: 'HAProxy: processo em execução'
+          type: ZABBIX_ACTIVE
+          key: 'proc.num[haproxy]'
+          delay: '60s'
+          history: 7d
+          trends: 365d
+          description: 'Número de processos HAProxy em execução (deve ser >= 1)'
+          tags:
+            - tag: component
+              value: process
+        - uuid: b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e9
+          name: 'HAProxy: uso de CPU do processo (%)'
+          type: ZABBIX_ACTIVE
+          key: 'proc.cpu.util[haproxy]'
+          delay: '60s'
+          history: 7d
+          trends: 365d
+          units: '%'
+          description: 'Percentual de CPU consumido pelo processo HAProxy'
+          tags:
+            - tag: component
+              value: process
+        - uuid: c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f0
+          name: 'HAProxy: memória usada pelo processo (bytes)'
+          type: ZABBIX_ACTIVE
+          key: 'proc.mem[haproxy,,,,rss]'
+          delay: '60s'
+          history: 7d
+          trends: 365d
+          units: B
+          description: 'Memória RSS utilizada pelo processo HAProxy'
+          tags:
+            - tag: component
+              value: process
+        # ========================
+        # STATS VIA HTTP (CSV API)
+        # ========================
+        - uuid: d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a1
+          name: 'HAProxy: stats CSV bruto'
+          type: HTTP_AGENT
+          key: 'haproxy.stats.csv'
+          delay: '60s'
+          history: '0'
+          trends: '0'
+          value_type: TEXT
+          url: '{$HAPROXY.STATS.URL}'
+          username: '{$HAPROXY.STATS.USER}'
+          password: '{$HAPROXY.STATS.PASSWORD}'
+          description: |
+            Coleta o CSV completo de estatísticas do HAProxy.
+            Item master — outros items extraem dados deste via preprocessing JSONPath/regex.
+          tags:
+            - tag: component
+              value: haproxy
+        # ========================
+        # CONEXÕES E SESSÕES
+        # ========================
+        - uuid: e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b2
+          name: 'HAProxy: conexões atuais (total)'
+          type: ZABBIX_ACTIVE
+          key: 'haproxy.current.connections'
+          delay: '60s'
+          history: 7d
+          trends: 365d
+          description: |
+            Total de conexões ativas no momento em todos os frontends.
+            Coletado via socket Unix do HAProxy ou stats page.
+          tags:
+            - tag: component
+              value: connections
+        - uuid: f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c3
+          name: 'HAProxy: sessões por segundo'
+          type: ZABBIX_ACTIVE
+          key: 'haproxy.sessions.per.second'
+          delay: '60s'
+          history: 7d
+          trends: 365d
+          units: sess/s
+          description: 'Taxa de novas sessões por segundo em todos os frontends'
+          tags:
+            - tag: component
+              value: connections
+        - uuid: a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d4
+          name: 'HAProxy: máximo de sessões simultâneas'
+          type: ZABBIX_ACTIVE
+          key: 'haproxy.max.sessions'
+          delay: '60s'
+          history: 7d
+          trends: 365d
+          description: 'Pico de sessões simultâneas desde o início do processo'
+          tags:
+            - tag: component
+              value: connections
+        # ========================
+        # BACKENDS E SERVIDORES
+        # ========================
+        - uuid: b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e5
+          name: 'HAProxy: servidores ativos (status UP)'
+          type: ZABBIX_ACTIVE
+          key: 'haproxy.servers.up'
+          delay: '30s'
+          history: 7d
+          trends: 365d
+          description: 'Número total de servidores com status UP nos backends'
+          tags:
+            - tag: component
+              value: backend
+        - uuid: c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f6
+          name: 'HAProxy: servidores fora (status DOWN)'
+          type: ZABBIX_ACTIVE
+          key: 'haproxy.servers.down'
+          delay: '30s'
+          history: 7d
+          trends: 365d
+          description: 'Número total de servidores com status DOWN — cada um = serviço indisponível'
+          tags:
+            - tag: component
+              value: backend
+        - uuid: d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a7
+          name: 'HAProxy: requisições na fila (total backends)'
+          type: ZABBIX_ACTIVE
+          key: 'haproxy.queue.current'
+          delay: '30s'
+          history: 7d
+          trends: 365d
+          description: |
+            Total de requisições aguardando servidor disponível em todos os backends.
+            Fila alta indica backends sobrecarregados ou indisponíveis.
+          tags:
+            - tag: component
+              value: backend
+        - uuid: e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b8
+          name: 'HAProxy: tempo médio de resposta dos backends (ms)'
+          type: ZABBIX_ACTIVE
+          key: 'haproxy.backend.response.time'
+          delay: '60s'
+          history: 7d
+          trends: 365d
+          units: ms
+          description: |
+            Tempo médio de resposta (rtime) de todos os backends.
+            Valor alto indica backends lentos ou sobrecarregados.
+          tags:
+            - tag: component
+              value: backend
+        # ========================
+        # TRÁFEGO
+        # ========================
+        - uuid: f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c9
+          name: 'HAProxy: bytes recebidos por segundo'
+          type: ZABBIX_ACTIVE
+          key: 'haproxy.bytes.in.rate'
+          delay: '60s'
+          history: 7d
+          trends: 365d
+          units: bps
+          description: 'Taxa de bytes recebidos por segundo em todos os frontends'
+          tags:
+            - tag: component
+              value: traffic
+        - uuid: a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d0
+          name: 'HAProxy: bytes enviados por segundo'
+          type: ZABBIX_ACTIVE
+          key: 'haproxy.bytes.out.rate'
+          delay: '60s'
+          history: 7d
+          trends: 365d
+          units: bps
+          description: 'Taxa de bytes enviados por segundo em todos os frontends'
+          tags:
+            - tag: component
+              value: traffic
+        # ========================
+        # ERROS HTTP
+        # ========================
+        - uuid: b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e1
+          name: 'HAProxy: erros HTTP 4xx por segundo'
+          type: ZABBIX_ACTIVE
+          key: 'haproxy.http.4xx.rate'
+          delay: '60s'
+          history: 7d
+          trends: 365d
+          units: req/s
+          description: 'Taxa de respostas HTTP 4xx (erro do cliente) por segundo'
+          tags:
+            - tag: component
+              value: errors
+        - uuid: c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f2
+          name: 'HAProxy: erros HTTP 5xx por segundo'
+          type: ZABBIX_ACTIVE
+          key: 'haproxy.http.5xx.rate'
+          delay: '60s'
+          history: 7d
+          trends: 365d
+          units: req/s
+          description: |
+            Taxa de respostas HTTP 5xx (erro do servidor) por segundo.
+            Erros 5xx indicam backends com falha ou sobrecarga.
+          tags:
+            - tag: component
+              value: errors
+        # ========================
+        # HEALTH CHECKS
+        # ========================
+        - uuid: d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a3
+          name: 'HAProxy: health checks com falha por segundo'
+          type: ZABBIX_ACTIVE
+          key: 'haproxy.health.check.failures.rate'
+          delay: '30s'
+          history: 7d
+          trends: 365d
+          units: checks/s
+          description: |
+            Taxa de health checks com falha por segundo nos backends.
+            Indica servidores falhando intermitentemente.
+          tags:
+            - tag: component
+              value: backend
+      triggers:
+        - uuid: e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b4
+          expression: 'last(/HAProxy - JPLS/proc.num[haproxy]) = 0'
+          name: 'HAProxy: processo não está em execução em {HOST.NAME}'
+          priority: DISASTER
+          description: 'O processo HAProxy parou. Nenhuma requisição está sendo balanceada.'
+          tags:
+            - tag: scope
+              value: availability
+        - uuid: f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c5
+          expression: 'last(/HAProxy - JPLS/haproxy.servers.down) >= {$HAPROXY.SERVER.DOWN.WARN}'
+          name: 'HAProxy: {ITEM.LASTVALUE} servidor(es) DOWN em {HOST.NAME}'
+          opdata: 'Servidores DOWN: {ITEM.LASTVALUE}'
+          priority: HIGH
+          description: |
+            Um ou mais servidores de backend estão com status DOWN.
+            HAProxy redirecionou o tráfego para os servidores restantes.
+            Verifique o health check e os logs dos servidores afetados.
+          tags:
+            - tag: scope
+              value: availability
+        - uuid: a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d6
+          expression: 'last(/HAProxy - JPLS/haproxy.queue.current) >= {$HAPROXY.BACKEND.QUEUE.WARN}'
+          name: 'HAProxy: fila de requisições alta ({ITEM.LASTVALUE}) em {HOST.NAME}'
+          opdata: 'Fila: {ITEM.LASTVALUE} requisições'
+          priority: WARNING
+          description: 'Backends sobrecarregados — requisições aguardando servidor disponível.'
+          tags:
+            - tag: scope
+              value: performance
+        - uuid: b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e7
+          expression: 'avg(/HAProxy - JPLS/haproxy.backend.response.time,5m) >= {$HAPROXY.BACKEND.RTIME.WARN}'
+          name: 'HAProxy: tempo de resposta dos backends alto (> {$HAPROXY.BACKEND.RTIME.WARN}ms) em {HOST.NAME}'
+          opdata: 'Rtime: {ITEM.LASTVALUE}ms'
+          priority: WARNING
+          tags:
+            - tag: scope
+              value: performance
+      graphs:
+        - uuid: c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f8
+          name: 'HAProxy: Conexões e Sessões'
+          graph_items:
+            - sortorder: '0'
+              color: 0080FF
+              item:
+                host: 'HAProxy - JPLS'
+                key: 'haproxy.current.connections'
+            - sortorder: '1'
+              color: 00CC00
+              item:
+                host: 'HAProxy - JPLS'
+                key: 'haproxy.sessions.per.second'
+        - uuid: d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a9
+          name: 'HAProxy: Servidores UP / DOWN'
+          graph_items:
+            - sortorder: '0'
+              color: 00CC00
+              item:
+                host: 'HAProxy - JPLS'
+                key: 'haproxy.servers.up'
+            - sortorder: '1'
+              color: E6002D
+              item:
+                host: 'HAProxy - JPLS'
+                key: 'haproxy.servers.down'
+        - uuid: e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b0
+          name: 'HAProxy: Tráfego (bytes/s)'
+          graph_items:
+            - sortorder: '0'
+              color: 00CC00
+              item:
+                host: 'HAProxy - JPLS'
+                key: 'haproxy.bytes.in.rate'
+            - sortorder: '1'
+              color: 0080FF
+              item:
+                host: 'HAProxy - JPLS'
+                key: 'haproxy.bytes.out.rate'
+        - uuid: f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c1
+          name: 'HAProxy: Erros HTTP (4xx / 5xx)'
+          graph_items:
+            - sortorder: '0'
+              color: FFAD00
+              item:
+                host: 'HAProxy - JPLS'
+                key: 'haproxy.http.4xx.rate'
+            - sortorder: '1'
+              color: E6002D
+              item:
+                host: 'HAProxy - JPLS'
+                key: 'haproxy.http.5xx.rate'

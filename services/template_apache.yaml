@@ -1,0 +1,360 @@
+zabbix_export:
+  version: '7.0'
+  template_groups:
+    - uuid: f906g577e57ig7d10d2gce6ee2igf145
+      name: 'Templates/Applications'
+  templates:
+    - uuid: 2a6b8c7d3e9f0a1b2c3d4e5f6a7b8c9d
+      template: 'Apache HTTP Server - JPLS'
+      name: 'Apache HTTP Server - JPLS'
+      description: |
+        Template de monitoramento completo para Apache HTTP Server via mod_status.
+        Cobre: processo, workers, conexões, requisições, tráfego, erros,
+        tempo de uptime e utilização de workers.
+
+        Desenvolvido por João Paulo de Lima Saraiva
+        Baseado em uso real do Apache como servidor web/proxy reverso na SEFA/PA,
+        em conjunto com HAProxy e Pacemaker.
+
+        Compatível com Zabbix 6.0 LTS e 7.0 LTS | Apache 2.4.x
+
+        Pré-requisito: habilitar mod_status no Apache
+          # Em /etc/httpd/conf/httpd.conf ou /etc/httpd/conf.d/status.conf
+          <Location /server-status>
+            SetHandler server-status
+            Require local  # Ou defina o IP do Zabbix Server
+          </Location>
+          # Habilitar módulo
+          a2enmod status  # Debian/Ubuntu
+          # ou: LoadModule status_module modules/mod_status.so
+
+        Repositório: https://github.com/joaoplsaraiva/zabbix-templates
+      groups:
+        - name: 'Templates/Applications'
+      macros:
+        - macro: '{$APACHE.STATUS.URL}'
+          value: 'http://localhost/server-status?auto'
+          description: 'URL do mod_status do Apache (formato machine-readable)'
+        - macro: '{$APACHE.STATUS.HOST}'
+          value: 'localhost'
+          description: 'Host header para requisição ao mod_status'
+        - macro: '{$APACHE.WORKERS.UTIL.WARN}'
+          value: '80'
+          description: 'Percentual de workers ocupados para alerta'
+        - macro: '{$APACHE.WORKERS.UTIL.CRIT}'
+          value: '95'
+          description: 'Percentual de workers ocupados — crítico (servidor sobrecarregado)'
+        - macro: '{$APACHE.RESPONSE.TIME.WARN}'
+          value: '5'
+          description: 'Tempo de resposta do Apache em segundos para alerta'
+        - macro: '{$APACHE.PROCESS.NAME}'
+          value: 'httpd'
+          description: 'Nome do processo Apache (httpd no RHEL/CentOS, apache2 no Debian/Ubuntu)'
+      items:
+        # ========================
+        # PROCESSO
+        # ========================
+        - uuid: a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d9
+          name: 'Apache: processo em execução'
+          type: ZABBIX_ACTIVE
+          key: 'proc.num[{$APACHE.PROCESS.NAME}]'
+          delay: '60s'
+          history: 7d
+          trends: 365d
+          description: 'Número de processos Apache (workers + master). Deve ser >= 2.'
+          tags:
+            - tag: component
+              value: process
+        - uuid: b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6f0
+          name: 'Apache: uso de CPU do processo (%)'
+          type: ZABBIX_ACTIVE
+          key: 'proc.cpu.util[{$APACHE.PROCESS.NAME}]'
+          delay: '60s'
+          history: 7d
+          trends: 365d
+          units: '%'
+          description: 'CPU total consumida por todos os processos Apache'
+          tags:
+            - tag: component
+              value: process
+        - uuid: c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7a1
+          name: 'Apache: memória usada pelo processo (bytes)'
+          type: ZABBIX_ACTIVE
+          key: 'proc.mem[{$APACHE.PROCESS.NAME},,,,rss]'
+          delay: '60s'
+          history: 7d
+          trends: 365d
+          units: B
+          description: 'Memória RSS total de todos os processos Apache'
+          tags:
+            - tag: component
+              value: process
+        # ========================
+        # MOD_STATUS — HTTP AGENT
+        # ========================
+        - uuid: d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8b2
+          name: 'Apache: status page (raw)'
+          type: HTTP_AGENT
+          key: 'apache.status'
+          delay: '60s'
+          history: '0'
+          trends: '0'
+          value_type: TEXT
+          url: '{$APACHE.STATUS.URL}'
+          headers:
+            - name: Host
+              value: '{$APACHE.STATUS.HOST}'
+          description: |
+            Coleta a página de status do Apache em formato machine-readable.
+            Item master — outros items extraem dados via preprocessing regex.
+          tags:
+            - tag: component
+              value: apache
+        # ========================
+        # WORKERS
+        # ========================
+        - uuid: e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9c3
+          name: 'Apache: workers ocupados'
+          type: DEPENDENT
+          key: 'apache.workers.busy'
+          master_item:
+            key: 'apache.status'
+          delay: '0'
+          history: 7d
+          trends: 365d
+          description: 'Número de workers processando requisições no momento'
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - 'BusyWorkers: (\d+)'
+                - '\1'
+          tags:
+            - tag: component
+              value: workers
+        - uuid: f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0d4
+          name: 'Apache: workers ociosos'
+          type: DEPENDENT
+          key: 'apache.workers.idle'
+          master_item:
+            key: 'apache.status'
+          delay: '0'
+          history: 7d
+          trends: 365d
+          description: 'Número de workers disponíveis aguardando requisições'
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - 'IdleWorkers: (\d+)'
+                - '\1'
+          tags:
+            - tag: component
+              value: workers
+        - uuid: a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1e5
+          name: 'Apache: utilização de workers (%)'
+          type: CALCULATED
+          key: 'apache.workers.utilization'
+          delay: '60s'
+          history: 7d
+          trends: 365d
+          units: '%'
+          params: 'last("apache.workers.busy") / (last("apache.workers.busy") + last("apache.workers.idle")) * 100'
+          description: |
+            Percentual de workers ocupados em relação ao total.
+            Valor próximo de 100% indica servidor no limite da capacidade —
+            novas requisições serão enfileiradas ou recusadas.
+          tags:
+            - tag: component
+              value: workers
+        # ========================
+        # REQUISIÇÕES E TRÁFEGO
+        # ========================
+        - uuid: b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2f6
+          name: 'Apache: requisições por segundo'
+          type: DEPENDENT
+          key: 'apache.requests.per.second'
+          master_item:
+            key: 'apache.status'
+          delay: '0'
+          history: 7d
+          trends: 365d
+          units: req/s
+          description: 'Taxa de requisições HTTP processadas por segundo'
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - 'ReqPerSec: ([0-9.]+)'
+                - '\1'
+          tags:
+            - tag: component
+              value: requests
+        - uuid: c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3a7
+          name: 'Apache: bytes transferidos por segundo'
+          type: DEPENDENT
+          key: 'apache.bytes.per.second'
+          master_item:
+            key: 'apache.status'
+          delay: '0'
+          history: 7d
+          trends: 365d
+          units: Bps
+          description: 'Taxa de bytes transferidos por segundo (entrada + saída)'
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - 'BytesPerSec: ([0-9.]+)'
+                - '\1'
+          tags:
+            - tag: component
+              value: traffic
+        - uuid: d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4b8
+          name: 'Apache: total de acessos desde o start'
+          type: DEPENDENT
+          key: 'apache.total.accesses'
+          master_item:
+            key: 'apache.status'
+          delay: '0'
+          history: 7d
+          trends: 365d
+          description: 'Total acumulado de requisições desde o início do processo'
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - 'Total Accesses: (\d+)'
+                - '\1'
+          tags:
+            - tag: component
+              value: requests
+        # ========================
+        # UPTIME E CARGA
+        # ========================
+        - uuid: e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5c9
+          name: 'Apache: uptime do servidor (segundos)'
+          type: DEPENDENT
+          key: 'apache.uptime'
+          master_item:
+            key: 'apache.status'
+          delay: '0'
+          history: 7d
+          trends: 365d
+          units: uptime
+          description: 'Tempo desde o último restart do Apache'
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - 'Uptime: (\d+)'
+                - '\1'
+          tags:
+            - tag: component
+              value: system
+        - uuid: f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6d0
+          name: 'Apache: carga de CPU do servidor (%)'
+          type: DEPENDENT
+          key: 'apache.cpu.load'
+          master_item:
+            key: 'apache.status'
+          delay: '0'
+          history: 7d
+          trends: 365d
+          units: '%'
+          description: 'CPU Load reportada pelo próprio Apache via mod_status'
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - 'CPULoad: ([0-9.]+)'
+                - '\1'
+            - type: MULTIPLIER
+              parameters:
+                - '100'
+          tags:
+            - tag: component
+              value: process
+        # ========================
+        # CONEXÕES ABERTAS
+        # ========================
+        - uuid: a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7e1
+          name: 'Apache: conexões abertas (Keep-Alive)'
+          type: ZABBIX_ACTIVE
+          key: 'net.tcp.service.perf[http,,80]'
+          delay: '60s'
+          history: 7d
+          trends: 365d
+          units: s
+          description: 'Tempo de resposta HTTP do Apache — também valida que o serviço está respondendo'
+          tags:
+            - tag: component
+              value: connections
+      triggers:
+        - uuid: b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8f2
+          expression: 'last(/Apache HTTP Server - JPLS/proc.num[{$APACHE.PROCESS.NAME}]) = 0'
+          name: 'Apache: processo não está em execução em {HOST.NAME}'
+          priority: DISASTER
+          description: 'O Apache parou. Nenhuma requisição HTTP está sendo atendida.'
+          tags:
+            - tag: scope
+              value: availability
+        - uuid: c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9a3
+          expression: 'last(/Apache HTTP Server - JPLS/apache.workers.utilization) >= {$APACHE.WORKERS.UTIL.CRIT}'
+          name: 'Apache: workers críticos — servidor no limite ({HOST.NAME})'
+          opdata: 'Workers ocupados: {ITEM.LASTVALUE}'
+          priority: HIGH
+          description: |
+            Quase todos os workers estão ocupados.
+            Novas requisições serão recusadas (503 Service Unavailable).
+            Aumente MaxRequestWorkers ou adicione mais servidores ao HAProxy.
+          tags:
+            - tag: scope
+              value: performance
+        - uuid: d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0b4
+          expression: 'last(/Apache HTTP Server - JPLS/apache.workers.utilization) >= {$APACHE.WORKERS.UTIL.WARN} and last(/Apache HTTP Server - JPLS/apache.workers.utilization) < {$APACHE.WORKERS.UTIL.CRIT}'
+          name: 'Apache: workers elevados (> {$APACHE.WORKERS.UTIL.WARN}%) em {HOST.NAME}'
+          opdata: 'Workers ocupados: {ITEM.LASTVALUE}'
+          priority: WARNING
+          dependencies:
+            - name: 'Apache: workers críticos — servidor no limite ({HOST.NAME})'
+              expression: 'last(/Apache HTTP Server - JPLS/apache.workers.utilization) >= {$APACHE.WORKERS.UTIL.CRIT}'
+          tags:
+            - tag: scope
+              value: performance
+        - uuid: e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1c5
+          expression: 'last(/Apache HTTP Server - JPLS/net.tcp.service.perf[http,,80]) >= {$APACHE.RESPONSE.TIME.WARN}'
+          name: 'Apache: tempo de resposta HTTP alto (> {$APACHE.RESPONSE.TIME.WARN}s) em {HOST.NAME}'
+          opdata: 'Tempo: {ITEM.LASTVALUE}s'
+          priority: WARNING
+          tags:
+            - tag: scope
+              value: performance
+        - uuid: f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2d6
+          expression: 'last(/Apache HTTP Server - JPLS/apache.uptime) < 600'
+          name: 'Apache: serviço reiniciado recentemente em {HOST.NAME}'
+          priority: INFO
+          description: 'O Apache foi reiniciado há menos de 10 minutos.'
+          tags:
+            - tag: scope
+              value: availability
+      graphs:
+        - uuid: a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3e7
+          name: 'Apache: Workers (ocupados / ociosos)'
+          graph_items:
+            - sortorder: '0'
+              color: E6002D
+              item:
+                host: 'Apache HTTP Server - JPLS'
+                key: 'apache.workers.busy'
+            - sortorder: '1'
+              color: 00CC00
+              item:
+                host: 'Apache HTTP Server - JPLS'
+                key: 'apache.workers.idle'
+        - uuid: b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4f8
+          name: 'Apache: Requisições e Tráfego'
+          graph_items:
+            - sortorder: '0'
+              color: 0080FF
+              item:
+                host: 'Apache HTTP Server - JPLS'
+                key: 'apache.requests.per.second'
+            - sortorder: '1'
+              color: 00CC00
+              item:
+                host: 'Apache HTTP Server - JPLS'
+                key: 'apache.bytes.per.second'

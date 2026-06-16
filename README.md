@@ -23,12 +23,13 @@ zabbix-templates/
 ├── network/
 │   ├── template_link_internet.yaml        # Uptime, latência, jitter, perda de pacotes
 │   ├── template_mikrotik_snmp.yaml        # MikroTik via SNMP v2c — CPU, memória, temp, wireless, VPN
-│   ├── template_switch_datacom.yaml       # Switches DATACOM DM1200E (em breve)
+│   ├── template_switch_datacom.yaml       # Switch DATACOM DM1200E — CPU, STP, LACP, temperatura, MAC table
 │   └── README.md
 ├── services/
-│   ├── template_haproxy.yaml              # em breve
-│   ├── template_apache.yaml              # em breve
-│   └── template_docker.yaml              # em breve
+│   ├── template_haproxy.yaml              # HAProxy — processo, frontends, backends, sessões, erros HTTP
+│   ├── template_apache.yaml               # Apache — workers, requisições, tráfego, mod_status
+│   ├── template_docker.yaml               # Docker — daemon, containers LLD, imagens, CPU/mem por container
+│   └── README.md
 ├── database/
 │   ├── template_mysql.yaml               # em breve
 │   └── template_oracle_db.yaml           # em breve
@@ -49,10 +50,10 @@ zabbix-templates/
 | [Linux by Agent](./linux/template_linux_by_agent.yaml) | Linux | 6.0+ / 7.0+ | Zabbix Agent | ✅ Disponível |
 | [Link Internet](./network/template_link_internet.yaml) | Network | 6.0+ / 7.0+ | ICMP + Agent | ✅ Disponível |
 | [MikroTik SNMP](./network/template_mikrotik_snmp.yaml) | Network | 6.0+ / 7.0+ | SNMP v2c | ✅ Disponível |
-| Switch DATACOM DM1200E | Network | 6.0+ / 7.0+ | SNMP v2c | 🔧 Em breve |
-| HAProxy | Services | 6.0+ / 7.0+ | HTTP Agent | 🔧 Em breve |
-| Apache HTTP | Services | 6.0+ / 7.0+ | Zabbix Agent | 🔧 Em breve |
-| Docker | Services | 6.0+ / 7.0+ | Agent 2 | 🔧 Em breve |
+| [Switch DATACOM DM1200E](./network/template_switch_datacom.yaml) | Network | 6.0+ / 7.0+ | SNMP v2c | ✅ Disponível |
+| [HAProxy](./services/template_haproxy.yaml) | Services | 6.0+ / 7.0+ | HTTP Agent | ✅ Disponível |
+| [Apache HTTP Server](./services/template_apache.yaml) | Services | 6.0+ / 7.0+ | Zabbix Agent | ✅ Disponível |
+| [Docker](./services/template_docker.yaml) | Services | 6.0+ / 7.0+ | Agent 2 | ✅ Disponível |
 | MySQL | Database | 6.0+ / 7.0+ | Agent 2 | 🔧 Em breve |
 | Oracle DB | Database | 6.0+ / 7.0+ | ODBC | 🔧 Em breve |
 | Kubernetes Nodes | Kubernetes | 6.0+ / 7.0+ | HTTP API | 🔧 Em breve |
