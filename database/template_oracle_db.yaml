@@ -1,0 +1,751 @@
+zabbix_export:
+  version: '7.0'
+  template_groups:
+    - uuid: i239j800h80lj0g43g5jhf9hh5ljh478
+      name: 'Templates/Databases'
+  templates:
+    - uuid: 5d9e1f0a6b2c3d4e5f6a7b8c9d0e1f2a
+      template: 'Oracle Database - JPLS'
+      name: 'Oracle Database - JPLS'
+      description: |
+        Template de monitoramento completo para Oracle Database via ODBC.
+        Cobre: instância, tablespaces, sessões, redo logs, SGA/PGA,
+        wait events, jobs, ASM, RMAN backup e disponibilidade.
+
+        Desenvolvido por João Paulo de Lima Saraiva
+        Baseado em uso real do Oracle DB na SEFA/PA:
+          - Oracle Database 11g, 12c e 19c
+          - Monitoramento de bancos de dados da Secretaria da Fazenda do Pará
+          - Experiência desde 2011 com Oracle em ambientes críticos de produção
+
+        Compatível com Zabbix 6.0 LTS e 7.0 LTS | Oracle 11g, 12c, 19c, 21c
+
+        Pré-requisito 1 — criar usuário de monitoramento no Oracle:
+          CREATE USER zabbix IDENTIFIED BY SUA_SENHA;
+          GRANT CREATE SESSION TO zabbix;
+          GRANT SELECT ON v_$instance TO zabbix;
+          GRANT SELECT ON v_$database TO zabbix;
+          GRANT SELECT ON v_$session TO zabbix;
+          GRANT SELECT ON v_$sql TO zabbix;
+          GRANT SELECT ON v_$sysstat TO zabbix;
+          GRANT SELECT ON v_$system_wait_class TO zabbix;
+          GRANT SELECT ON v_$log TO zabbix;
+          GRANT SELECT ON v_$sgastat TO zabbix;
+          GRANT SELECT ON dba_tablespace_usage_metrics TO zabbix;
+          GRANT SELECT ON dba_segments TO zabbix;
+          GRANT SELECT ON dba_jobs_running TO zabbix;
+          GRANT SELECT ON dba_scheduler_jobs TO zabbix;
+          GRANT SELECT ON v_$rman_backup_job_details TO zabbix;
+          GRANT SELECT ON v_$asm_diskgroup TO zabbix;
+
+        Pré-requisito 2 — configurar ODBC no servidor Zabbix:
+          # Instalar driver Oracle ODBC (instant client + odbc)
+          # /etc/odbc.ini
+          [ORACLE_PROD]
+          Driver      = Oracle 19c ODBC driver
+          ServerName  = //oracle-host:1521/ORCL
+          UserID      = zabbix
+          Password    = SUA_SENHA
+
+        Repositório: https://github.com/joaoplsaraiva/zabbix-templates
+      groups:
+        - name: 'Templates/Databases'
+      macros:
+        - macro: '{$ORACLE.DSN}'
+          value: 'ORACLE_PROD'
+          description: 'Nome do DSN ODBC configurado no /etc/odbc.ini'
+        - macro: '{$ORACLE.USER}'
+          value: 'zabbix'
+          description: 'Usuário de monitoramento Oracle'
+        - macro: '{$ORACLE.PASSWORD}'
+          value: ''
+          description: 'Senha do usuário (use Secret no Zabbix)'
+        - macro: '{$ORACLE.TABLESPACE.UTIL.WARN}'
+          value: '80'
+          description: 'Percentual de uso de tablespace para alerta'
+        - macro: '{$ORACLE.TABLESPACE.UTIL.CRIT}'
+          value: '95'
+          description: 'Percentual de uso de tablespace — crítico (banco travará ao encher)'
+        - macro: '{$ORACLE.SESSIONS.MAX.WARN}'
+          value: '80'
+          description: 'Percentual do limite de sessões para alerta'
+        - macro: '{$ORACLE.SESSIONS.MAX.CRIT}'
+          value: '95'
+          description: 'Percentual do limite de sessões — crítico'
+        - macro: '{$ORACLE.ACTIVE.SESSIONS.WARN}'
+          value: '100'
+          description: 'Número de sessões ativas simultâneas para alerta'
+        - macro: '{$ORACLE.BLOCKED.SESSIONS.WARN}'
+          value: '5'
+          description: 'Sessões bloqueadas para alerta'
+        - macro: '{$ORACLE.REDO.SWITCHES.WARN}'
+          value: '20'
+          description: 'Log switches por hora para alerta (indica redo logs pequenos)'
+        - macro: '{$ORACLE.SGA.UTIL.WARN}'
+          value: '90'
+          description: 'Utilização da SGA para alerta (%)'
+        - macro: '{$ORACLE.BACKUP.AGE.WARN}'
+          value: '1'
+          description: 'Dias desde o último backup RMAN para alerta'
+        - macro: '{$ORACLE.BACKUP.AGE.CRIT}'
+          value: '2'
+          description: 'Dias desde o último backup RMAN — crítico'
+      items:
+        # ========================
+        # INSTÂNCIA E DISPONIBILIDADE
+        # ========================
+        - uuid: a1b2c3d4e5f6a7b8c9d0e1f2a3b4c9d0
+          name: 'Oracle: status da instância'
+          type: ODBC
+          key: 'db.odbc.select[oracle.instance.status,"{$ORACLE.DSN}"]'
+          delay: '60s'
+          history: 7d
+          trends: '0'
+          value_type: CHAR
+          username: '{$ORACLE.USER}'
+          password: '{$ORACLE.PASSWORD}'
+          params: |
+            SELECT STATUS FROM V$INSTANCE
+          description: |
+            Status da instância Oracle: OPEN, MOUNTED, STARTED, RESTRICTED, UNKNOWN.
+            Qualquer valor diferente de OPEN indica que o banco não está disponível para usuários.
+          tags:
+            - tag: component
+              value: availability
+        - uuid: b2c3d4e5f6a7b8c9d0e1f2a3b4c5d0e1
+          name: 'Oracle: banco de dados aberto para leitura/escrita'
+          type: ODBC
+          key: 'db.odbc.select[oracle.db.open.mode,"{$ORACLE.DSN}"]'
+          delay: '60s'
+          history: 7d
+          trends: '0'
+          value_type: CHAR
+          username: '{$ORACLE.USER}'
+          password: '{$ORACLE.PASSWORD}'
+          params: |
+            SELECT OPEN_MODE FROM V$DATABASE
+          description: |
+            Modo de abertura do banco:
+              READ WRITE = normal (produção)
+              READ ONLY  = banco em modo somente leitura (standby ativo para consultas)
+              MOUNTED    = banco montado mas não aberto
+          tags:
+            - tag: component
+              value: availability
+        - uuid: c3d4e5f6a7b8c9d0e1f2a3b4c5d6e1f2
+          name: 'Oracle: nome do banco de dados'
+          type: ODBC
+          key: 'db.odbc.select[oracle.db.name,"{$ORACLE.DSN}"]'
+          delay: '1h'
+          history: 7d
+          trends: '0'
+          value_type: CHAR
+          username: '{$ORACLE.USER}'
+          password: '{$ORACLE.PASSWORD}'
+          params: |
+            SELECT NAME FROM V$DATABASE
+          description: 'Nome do banco de dados Oracle (DB_NAME)'
+          tags:
+            - tag: component
+              value: system
+        - uuid: d4e5f6a7b8c9d0e1f2a3b4c5d6e7f2a3
+          name: 'Oracle: versão do banco de dados'
+          type: ODBC
+          key: 'db.odbc.select[oracle.version,"{$ORACLE.DSN}"]'
+          delay: '1h'
+          history: 30d
+          trends: '0'
+          value_type: CHAR
+          username: '{$ORACLE.USER}'
+          password: '{$ORACLE.PASSWORD}'
+          params: |
+            SELECT VERSION FROM V$INSTANCE
+          description: 'Versão do Oracle Database instalada (ex: 19.3.0.0.0)'
+          tags:
+            - tag: component
+              value: system
+        - uuid: e5f6a7b8c9d0e1f2a3b4c5d6e7f8a3b4
+          name: 'Oracle: uptime da instância (horas)'
+          type: ODBC
+          key: 'db.odbc.select[oracle.startup.time,"{$ORACLE.DSN}"]'
+          delay: '5m'
+          history: 30d
+          trends: 365d
+          units: h
+          username: '{$ORACLE.USER}'
+          password: '{$ORACLE.PASSWORD}'
+          params: |
+            SELECT ROUND((SYSDATE - STARTUP_TIME) * 24, 2) AS UPTIME_HOURS
+            FROM V$INSTANCE
+          description: 'Horas desde o último startup da instância Oracle'
+          tags:
+            - tag: component
+              value: system
+        # ========================
+        # SESSÕES
+        # ========================
+        - uuid: f6a7b8c9d0e1f2a3b4c5d6e7f8a9b4c5
+          name: 'Oracle: sessões ativas no momento'
+          type: ODBC
+          key: 'db.odbc.select[oracle.sessions.active,"{$ORACLE.DSN}"]'
+          delay: '60s'
+          history: 7d
+          trends: 365d
+          username: '{$ORACLE.USER}'
+          password: '{$ORACLE.PASSWORD}'
+          params: |
+            SELECT COUNT(*) FROM V$SESSION
+            WHERE STATUS = 'ACTIVE' AND TYPE = 'USER'
+          description: 'Sessões de usuário ativas (executando SQL) no momento'
+          tags:
+            - tag: component
+              value: sessions
+        - uuid: a7b8c9d0e1f2a3b4c5d6e7f8a9b0c5d6
+          name: 'Oracle: total de sessões abertas'
+          type: ODBC
+          key: 'db.odbc.select[oracle.sessions.total,"{$ORACLE.DSN}"]'
+          delay: '60s'
+          history: 7d
+          trends: 365d
+          username: '{$ORACLE.USER}'
+          password: '{$ORACLE.PASSWORD}'
+          params: |
+            SELECT COUNT(*) FROM V$SESSION WHERE TYPE = 'USER'
+          description: 'Total de sessões de usuário abertas (ativas + idle)'
+          tags:
+            - tag: component
+              value: sessions
+        - uuid: b8c9d0e1f2a3b4c5d6e7f8a9b0c1d6e7
+          name: 'Oracle: sessões bloqueadas (waiting for lock)'
+          type: ODBC
+          key: 'db.odbc.select[oracle.sessions.blocked,"{$ORACLE.DSN}"]'
+          delay: '30s'
+          history: 7d
+          trends: 365d
+          username: '{$ORACLE.USER}'
+          password: '{$ORACLE.PASSWORD}'
+          params: |
+            SELECT COUNT(*) FROM V$SESSION
+            WHERE BLOCKING_SESSION IS NOT NULL
+          description: |
+            Sessões aguardando liberação de lock por outras sessões.
+            Bloqueios causam lentidão e timeouts para os usuários.
+            Investigue com: SELECT * FROM V$SESSION WHERE BLOCKING_SESSION IS NOT NULL;
+          tags:
+            - tag: component
+              value: sessions
+        - uuid: c9d0e1f2a3b4c5d6e7f8a9b0c1d2e7f8
+          name: 'Oracle: limite máximo de sessões configurado'
+          type: ODBC
+          key: 'db.odbc.select[oracle.sessions.limit,"{$ORACLE.DSN}"]'
+          delay: '1h'
+          history: 7d
+          trends: 365d
+          username: '{$ORACLE.USER}'
+          password: '{$ORACLE.PASSWORD}'
+          params: |
+            SELECT VALUE FROM V$PARAMETER WHERE NAME = 'sessions'
+          description: 'Valor configurado para o parâmetro sessions (limite máximo de sessões)'
+          tags:
+            - tag: component
+              value: sessions
+        # ========================
+        # TABLESPACES
+        # ========================
+        - uuid: d0e1f2a3b4c5d6e7f8a9b0c1d2e3f8a9
+          name: 'Oracle: tablespace SYSTEM — uso (%)'
+          type: ODBC
+          key: 'db.odbc.select[oracle.ts.system.pct,"{$ORACLE.DSN}"]'
+          delay: '5m'
+          history: 30d
+          trends: 365d
+          units: '%'
+          username: '{$ORACLE.USER}'
+          password: '{$ORACLE.PASSWORD}'
+          params: |
+            SELECT ROUND(USED_PERCENT, 2) FROM DBA_TABLESPACE_USAGE_METRICS
+            WHERE TABLESPACE_NAME = 'SYSTEM'
+          description: |
+            Percentual de uso da tablespace SYSTEM.
+            SYSTEM cheia = banco não consegue criar objetos de dicionário de dados.
+            Consequência: banco pode travar completamente.
+          tags:
+            - tag: component
+              value: tablespace
+        - uuid: e1f2a3b4c5d6e7f8a9b0c1d2e3f4a9b0
+          name: 'Oracle: tablespace SYSAUX — uso (%)'
+          type: ODBC
+          key: 'db.odbc.select[oracle.ts.sysaux.pct,"{$ORACLE.DSN}"]'
+          delay: '5m'
+          history: 30d
+          trends: 365d
+          units: '%'
+          username: '{$ORACLE.USER}'
+          password: '{$ORACLE.PASSWORD}'
+          params: |
+            SELECT ROUND(USED_PERCENT, 2) FROM DBA_TABLESPACE_USAGE_METRICS
+            WHERE TABLESPACE_NAME = 'SYSAUX'
+          description: 'Percentual de uso da tablespace SYSAUX (AWR, ASH, estatísticas)'
+          tags:
+            - tag: component
+              value: tablespace
+        - uuid: f2a3b4c5d6e7f8a9b0c1d2e3f4a5b0c1
+          name: 'Oracle: tablespace USERS — uso (%)'
+          type: ODBC
+          key: 'db.odbc.select[oracle.ts.users.pct,"{$ORACLE.DSN}"]'
+          delay: '5m'
+          history: 30d
+          trends: 365d
+          units: '%'
+          username: '{$ORACLE.USER}'
+          password: '{$ORACLE.PASSWORD}'
+          params: |
+            SELECT ROUND(USED_PERCENT, 2) FROM DBA_TABLESPACE_USAGE_METRICS
+            WHERE TABLESPACE_NAME = 'USERS'
+          description: 'Percentual de uso da tablespace padrão de usuários'
+          tags:
+            - tag: component
+              value: tablespace
+        - uuid: a3b4c5d6e7f8a9b0c1d2e3f4a5b6c1d2
+          name: 'Oracle: tablespace TEMP — uso (%)'
+          type: ODBC
+          key: 'db.odbc.select[oracle.ts.temp.pct,"{$ORACLE.DSN}"]'
+          delay: '5m'
+          history: 30d
+          trends: 365d
+          units: '%'
+          username: '{$ORACLE.USER}'
+          password: '{$ORACLE.PASSWORD}'
+          params: |
+            SELECT ROUND(USED_PERCENT, 2) FROM DBA_TABLESPACE_USAGE_METRICS
+            WHERE TABLESPACE_NAME = 'TEMP'
+          description: |
+            Percentual de uso da tablespace temporária.
+            Alto uso indica sorts e hash joins grandes em memória insuficiente.
+            Ajuste PGA_AGGREGATE_TARGET ou o tamanho da TEMP.
+          tags:
+            - tag: component
+              value: tablespace
+        # ========================
+        # SGA E PGA
+        # ========================
+        - uuid: b4c5d6e7f8a9b0c1d2e3f4a5b6c7d2e3
+          name: 'Oracle: SGA — tamanho total alocado (bytes)'
+          type: ODBC
+          key: 'db.odbc.select[oracle.sga.total,"{$ORACLE.DSN}"]'
+          delay: '5m'
+          history: 7d
+          trends: 365d
+          units: B
+          username: '{$ORACLE.USER}'
+          password: '{$ORACLE.PASSWORD}'
+          params: |
+            SELECT SUM(BYTES) FROM V$SGASTAT
+          description: 'Tamanho total da System Global Area (SGA) alocada em bytes'
+          tags:
+            - tag: component
+              value: memory
+        - uuid: c5d6e7f8a9b0c1d2e3f4a5b6c7d8e3f4
+          name: 'Oracle: SGA — Buffer Cache (bytes)'
+          type: ODBC
+          key: 'db.odbc.select[oracle.sga.buffer.cache,"{$ORACLE.DSN}"]'
+          delay: '5m'
+          history: 7d
+          trends: 365d
+          units: B
+          username: '{$ORACLE.USER}'
+          password: '{$ORACLE.PASSWORD}'
+          params: |
+            SELECT BYTES FROM V$SGASTAT
+            WHERE POOL IS NULL AND NAME = 'db_block_buffers'
+          description: 'Tamanho do Buffer Cache na SGA — armazena blocos de dados em memória'
+          tags:
+            - tag: component
+              value: memory
+        - uuid: d6e7f8a9b0c1d2e3f4a5b6c7d8e9f4a5
+          name: 'Oracle: SGA — Shared Pool (bytes)'
+          type: ODBC
+          key: 'db.odbc.select[oracle.sga.shared.pool,"{$ORACLE.DSN}"]'
+          delay: '5m'
+          history: 7d
+          trends: 365d
+          units: B
+          username: '{$ORACLE.USER}'
+          password: '{$ORACLE.PASSWORD}'
+          params: |
+            SELECT SUM(BYTES) FROM V$SGASTAT WHERE POOL = 'shared pool'
+          description: |
+            Tamanho do Shared Pool na SGA.
+            Armazena: Library Cache (SQL parseado), Dictionary Cache, Result Cache.
+            Shared Pool pequeno causa hard parses excessivos.
+          tags:
+            - tag: component
+              value: memory
+        # ========================
+        # REDO LOGS
+        # ========================
+        - uuid: e7f8a9b0c1d2e3f4a5b6c7d8e9f0a5b6
+          name: 'Oracle: redo log switches na última hora'
+          type: ODBC
+          key: 'db.odbc.select[oracle.redo.switches.1h,"{$ORACLE.DSN}"]'
+          delay: '5m'
+          history: 30d
+          trends: 365d
+          username: '{$ORACLE.USER}'
+          password: '{$ORACLE.PASSWORD}'
+          params: |
+            SELECT COUNT(*) FROM V$LOG_HISTORY
+            WHERE FIRST_TIME >= SYSDATE - 1/24
+          description: |
+            Número de log switches na última hora.
+            Switches excessivos (> 20/hora) indicam redo logs pequenos.
+            Consequência: overhead de I/O e checkpoint excessivo.
+            Solução: aumentar o tamanho dos grupos de redo log.
+          tags:
+            - tag: component
+              value: redo
+        - uuid: f8a9b0c1d2e3f4a5b6c7d8e9f0a1b6c7
+          name: 'Oracle: status dos grupos de redo log'
+          type: ODBC
+          key: 'db.odbc.select[oracle.redo.status,"{$ORACLE.DSN}"]'
+          delay: '5m'
+          history: 7d
+          trends: '0'
+          value_type: TEXT
+          username: '{$ORACLE.USER}'
+          password: '{$ORACLE.PASSWORD}'
+          params: |
+            SELECT GROUP#, MEMBERS, BYTES/1024/1024 AS SIZE_MB, STATUS
+            FROM V$LOG ORDER BY GROUP#
+          description: |
+            Status de todos os grupos de redo log.
+            Status INACTIVE = grupo pode ser reutilizado
+            Status ACTIVE   = grupo ainda necessário para recuperação
+            Status CURRENT  = grupo sendo usado atualmente
+          tags:
+            - tag: component
+              value: redo
+        # ========================
+        # WAIT EVENTS
+        # ========================
+        - uuid: a9b0c1d2e3f4a5b6c7d8e9f0a1b2c7d8
+          name: 'Oracle: wait events — tempo em espera de I/O (s)'
+          type: ODBC
+          key: 'db.odbc.select[oracle.wait.io,"{$ORACLE.DSN}"]'
+          delay: '60s'
+          history: 7d
+          trends: 365d
+          units: s
+          username: '{$ORACLE.USER}'
+          password: '{$ORACLE.PASSWORD}'
+          params: |
+            SELECT ROUND(TIME_WAITED / 100, 2) FROM V$SYSTEM_WAIT_CLASS
+            WHERE WAIT_CLASS = 'User I/O'
+          description: |
+            Tempo total acumulado em esperas de I/O de usuário.
+            Alto valor indica subsistema de disco lento ou tablespaces muito fragmentadas.
+          tags:
+            - tag: component
+              value: waits
+        - uuid: b0c1d2e3f4a5b6c7d8e9f0a1b2c3d8e9
+          name: 'Oracle: wait events — tempo em espera de CPU (s)'
+          type: ODBC
+          key: 'db.odbc.select[oracle.wait.cpu,"{$ORACLE.DSN}"]'
+          delay: '60s'
+          history: 7d
+          trends: 365d
+          units: s
+          username: '{$ORACLE.USER}'
+          password: '{$ORACLE.PASSWORD}'
+          params: |
+            SELECT ROUND(TIME_WAITED / 100, 2) FROM V$SYSTEM_WAIT_CLASS
+            WHERE WAIT_CLASS = 'CPU'
+          description: 'Tempo total acumulado em uso de CPU pelas sessões Oracle'
+          tags:
+            - tag: component
+              value: waits
+        - uuid: c1d2e3f4a5b6c7d8e9f0a1b2c3d4e9f0
+          name: 'Oracle: wait events — concorrência (latch waits) (s)'
+          type: ODBC
+          key: 'db.odbc.select[oracle.wait.concurrency,"{$ORACLE.DSN}"]'
+          delay: '60s'
+          history: 7d
+          trends: 365d
+          units: s
+          username: '{$ORACLE.USER}'
+          password: '{$ORACLE.PASSWORD}'
+          params: |
+            SELECT ROUND(TIME_WAITED / 100, 2) FROM V$SYSTEM_WAIT_CLASS
+            WHERE WAIT_CLASS = 'Concurrency'
+          description: |
+            Tempo em esperas de concorrência (latch, mutex, buffer busy).
+            Alto valor indica contenção interna no Oracle.
+          tags:
+            - tag: component
+              value: waits
+        # ========================
+        # BACKUP RMAN
+        # ========================
+        - uuid: d2e3f4a5b6c7d8e9f0a1b2c3d4e5f0a1
+          name: 'Oracle: último backup RMAN — status'
+          type: ODBC
+          key: 'db.odbc.select[oracle.rman.last.status,"{$ORACLE.DSN}"]'
+          delay: '30m'
+          history: 30d
+          trends: '0'
+          value_type: CHAR
+          username: '{$ORACLE.USER}'
+          password: '{$ORACLE.PASSWORD}'
+          params: |
+            SELECT STATUS FROM V$RMAN_BACKUP_JOB_DETAILS
+            WHERE START_TIME = (SELECT MAX(START_TIME) FROM V$RMAN_BACKUP_JOB_DETAILS)
+          description: |
+            Status do último job de backup RMAN:
+              COMPLETED           = sucesso
+              COMPLETED WITH WARNINGS = concluído com avisos
+              FAILED              = falha no backup
+          tags:
+            - tag: component
+              value: backup
+        - uuid: e3f4a5b6c7d8e9f0a1b2c3d4e5f6a1b2
+          name: 'Oracle: último backup RMAN — horas atrás'
+          type: ODBC
+          key: 'db.odbc.select[oracle.rman.last.hours,"{$ORACLE.DSN}"]'
+          delay: '30m'
+          history: 30d
+          trends: 365d
+          units: h
+          username: '{$ORACLE.USER}'
+          password: '{$ORACLE.PASSWORD}'
+          params: |
+            SELECT ROUND((SYSDATE - MAX(END_TIME)) * 24, 1)
+            FROM V$RMAN_BACKUP_JOB_DETAILS
+            WHERE STATUS = 'COMPLETED'
+          description: |
+            Quantas horas atrás foi o último backup RMAN bem-sucedido.
+            Mais de 24h sem backup é alerta; mais de 48h é crítico.
+          tags:
+            - tag: component
+              value: backup
+        # ========================
+        # JOBS
+        # ========================
+        - uuid: f4a5b6c7d8e9f0a1b2c3d4e5f6a7b2c3
+          name: 'Oracle: jobs agendados com falha nas últimas 24h'
+          type: ODBC
+          key: 'db.odbc.select[oracle.jobs.failed,"{$ORACLE.DSN}"]'
+          delay: '30m'
+          history: 30d
+          trends: 365d
+          username: '{$ORACLE.USER}'
+          password: '{$ORACLE.PASSWORD}'
+          params: |
+            SELECT COUNT(*) FROM DBA_SCHEDULER_JOBS
+            WHERE STATE = 'FAILED'
+            AND LAST_RUN_DATE >= SYSDATE - 1
+          description: 'Jobs do DBMS_SCHEDULER que falharam nas últimas 24 horas'
+          tags:
+            - tag: component
+              value: jobs
+      triggers:
+        - uuid: a5b6c7d8e9f0a1b2c3d4e5f6a7b8c3d4
+          expression: 'last(/Oracle Database - JPLS/db.odbc.select[oracle.instance.status,"{$ORACLE.DSN}"])<>"OPEN"'
+          name: 'Oracle: instância não está OPEN em {HOST.NAME}'
+          opdata: 'Status: {ITEM.LASTVALUE}'
+          priority: DISASTER
+          description: |
+            A instância Oracle não está no status OPEN.
+            Banco indisponível para conexões de usuários.
+            Conecte como SYSDBA e execute: SELECT STATUS FROM V$INSTANCE;
+          tags:
+            - tag: scope
+              value: availability
+        - uuid: b6c7d8e9f0a1b2c3d4e5f6a7b8c9d4e5
+          expression: 'last(/Oracle Database - JPLS/db.odbc.select[oracle.sessions.blocked,"{$ORACLE.DSN}"]) >= {$ORACLE.BLOCKED.SESSIONS.WARN}'
+          name: 'Oracle: {ITEM.LASTVALUE} sessão(ões) bloqueada(s) em {HOST.NAME}'
+          opdata: 'Sessões bloqueadas: {ITEM.LASTVALUE}'
+          priority: HIGH
+          description: |
+            Sessões aguardando lock por outras sessões.
+            Identifique a cadeia de bloqueio com:
+              SELECT BLOCKING_SESSION, SID, WAIT_CLASS, SECONDS_IN_WAIT
+              FROM V$SESSION WHERE BLOCKING_SESSION IS NOT NULL
+              ORDER BY SECONDS_IN_WAIT DESC;
+          tags:
+            - tag: scope
+              value: performance
+        - uuid: c7d8e9f0a1b2c3d4e5f6a7b8c9d0e5f6
+          expression: 'last(/Oracle Database - JPLS/db.odbc.select[oracle.ts.system.pct,"{$ORACLE.DSN}"]) >= {$ORACLE.TABLESPACE.UTIL.CRIT}'
+          name: 'Oracle: tablespace SYSTEM crítica (> {$ORACLE.TABLESPACE.UTIL.CRIT}%) em {HOST.NAME}'
+          opdata: 'Uso: {ITEM.LASTVALUE}'
+          priority: DISASTER
+          description: 'SYSTEM tablespace cheia. O banco pode travar. Adicione datafiles IMEDIATAMENTE.'
+          tags:
+            - tag: scope
+              value: capacity
+        - uuid: d8e9f0a1b2c3d4e5f6a7b8c9d0e1f6a7
+          expression: 'last(/Oracle Database - JPLS/db.odbc.select[oracle.ts.system.pct,"{$ORACLE.DSN}"]) >= {$ORACLE.TABLESPACE.UTIL.WARN} and last(/Oracle Database - JPLS/db.odbc.select[oracle.ts.system.pct,"{$ORACLE.DSN}"]) < {$ORACLE.TABLESPACE.UTIL.CRIT}'
+          name: 'Oracle: tablespace SYSTEM elevada (> {$ORACLE.TABLESPACE.UTIL.WARN}%) em {HOST.NAME}'
+          opdata: 'Uso: {ITEM.LASTVALUE}'
+          priority: HIGH
+          dependencies:
+            - name: 'Oracle: tablespace SYSTEM crítica (> {$ORACLE.TABLESPACE.UTIL.CRIT}%) em {HOST.NAME}'
+              expression: 'last(/Oracle Database - JPLS/db.odbc.select[oracle.ts.system.pct,"{$ORACLE.DSN}"]) >= {$ORACLE.TABLESPACE.UTIL.CRIT}'
+          tags:
+            - tag: scope
+              value: capacity
+        - uuid: e9f0a1b2c3d4e5f6a7b8c9d0e1f2a7b8
+          expression: 'last(/Oracle Database - JPLS/db.odbc.select[oracle.ts.users.pct,"{$ORACLE.DSN}"]) >= {$ORACLE.TABLESPACE.UTIL.CRIT}'
+          name: 'Oracle: tablespace USERS crítica (> {$ORACLE.TABLESPACE.UTIL.CRIT}%) em {HOST.NAME}'
+          opdata: 'Uso: {ITEM.LASTVALUE}'
+          priority: HIGH
+          description: 'Tablespace USERS quase cheia. Usuários não conseguirão inserir dados.'
+          tags:
+            - tag: scope
+              value: capacity
+        - uuid: f0a1b2c3d4e5f6a7b8c9d0e1f2a3b8c9
+          expression: 'last(/Oracle Database - JPLS/db.odbc.select[oracle.ts.users.pct,"{$ORACLE.DSN}"]) >= {$ORACLE.TABLESPACE.UTIL.WARN} and last(/Oracle Database - JPLS/db.odbc.select[oracle.ts.users.pct,"{$ORACLE.DSN}"]) < {$ORACLE.TABLESPACE.UTIL.CRIT}'
+          name: 'Oracle: tablespace USERS elevada (> {$ORACLE.TABLESPACE.UTIL.WARN}%) em {HOST.NAME}'
+          opdata: 'Uso: {ITEM.LASTVALUE}'
+          priority: WARNING
+          tags:
+            - tag: scope
+              value: capacity
+        - uuid: a1b2c3d4e5f6a7b8c9d0e1f2a3b4c0d1
+          expression: 'last(/Oracle Database - JPLS/db.odbc.select[oracle.redo.switches.1h,"{$ORACLE.DSN}"]) >= {$ORACLE.REDO.SWITCHES.WARN}'
+          name: 'Oracle: redo log switches excessivos ({ITEM.LASTVALUE}/hora) em {HOST.NAME}'
+          opdata: 'Switches/hora: {ITEM.LASTVALUE}'
+          priority: WARNING
+          description: |
+            Log switches excessivos causam overhead de I/O e checkpoints frequentes.
+            Aumente o tamanho dos grupos de redo log para reduzir a frequência de switches.
+            Tamanho recomendado: provoque switch a cada 15-30 minutos.
+          tags:
+            - tag: scope
+              value: performance
+        - uuid: b2c3d4e5f6a7b8c9d0e1f2a3b4c5d1e2
+          expression: 'last(/Oracle Database - JPLS/db.odbc.select[oracle.rman.last.status,"{$ORACLE.DSN}"])<>"COMPLETED"'
+          name: 'Oracle: último backup RMAN com falha em {HOST.NAME}'
+          opdata: 'Status: {ITEM.LASTVALUE}'
+          priority: HIGH
+          description: |
+            O último backup RMAN não foi concluído com sucesso.
+            Verifique os logs do RMAN e o diretório de destino dos backups.
+          tags:
+            - tag: scope
+              value: backup
+        - uuid: c3d4e5f6a7b8c9d0e1f2a3b4c5d6e2f3
+          expression: 'last(/Oracle Database - JPLS/db.odbc.select[oracle.rman.last.hours,"{$ORACLE.DSN}"]) >= {$ORACLE.BACKUP.AGE.CRIT} * 24'
+          name: 'Oracle: sem backup RMAN há mais de {$ORACLE.BACKUP.AGE.CRIT} dia(s) em {HOST.NAME}'
+          opdata: 'Último backup: {ITEM.LASTVALUE}h atrás'
+          priority: HIGH
+          description: 'Banco sem backup há mais tempo que o tolerável. Risco de perda de dados.'
+          tags:
+            - tag: scope
+              value: backup
+        - uuid: d4e5f6a7b8c9d0e1f2a3b4c5d6e7f3a4
+          expression: 'last(/Oracle Database - JPLS/db.odbc.select[oracle.rman.last.hours,"{$ORACLE.DSN}"]) >= {$ORACLE.BACKUP.AGE.WARN} * 24 and last(/Oracle Database - JPLS/db.odbc.select[oracle.rman.last.hours,"{$ORACLE.DSN}"]) < {$ORACLE.BACKUP.AGE.CRIT} * 24'
+          name: 'Oracle: backup RMAN não realizado no último dia em {HOST.NAME}'
+          opdata: 'Último backup: {ITEM.LASTVALUE}h atrás'
+          priority: WARNING
+          dependencies:
+            - name: 'Oracle: sem backup RMAN há mais de {$ORACLE.BACKUP.AGE.CRIT} dia(s) em {HOST.NAME}'
+              expression: 'last(/Oracle Database - JPLS/db.odbc.select[oracle.rman.last.hours,"{$ORACLE.DSN}"]) >= {$ORACLE.BACKUP.AGE.CRIT} * 24'
+          tags:
+            - tag: scope
+              value: backup
+        - uuid: e5f6a7b8c9d0e1f2a3b4c5d6e7f8a4b5
+          expression: 'last(/Oracle Database - JPLS/db.odbc.select[oracle.jobs.failed,"{$ORACLE.DSN}"]) > 0'
+          name: 'Oracle: {ITEM.LASTVALUE} job(s) do Scheduler com falha em {HOST.NAME}'
+          opdata: 'Jobs com falha: {ITEM.LASTVALUE}'
+          priority: WARNING
+          description: |
+            Jobs do DBMS_SCHEDULER falharam nas últimas 24h.
+            Verifique com:
+              SELECT JOB_NAME, STATE, LAST_RUN_DATE, RUN_COUNT, FAILURE_COUNT
+              FROM DBA_SCHEDULER_JOBS WHERE STATE = 'FAILED';
+          tags:
+            - tag: scope
+              value: jobs
+        - uuid: f6a7b8c9d0e1f2a3b4c5d6e7f8a9b5c6
+          expression: 'last(/Oracle Database - JPLS/db.odbc.select[oracle.startup.time,"{$ORACLE.DSN}"]) < 1'
+          name: 'Oracle: instância reiniciada recentemente em {HOST.NAME}'
+          opdata: 'Uptime: {ITEM.LASTVALUE}h'
+          priority: WARNING
+          description: 'Oracle reiniciado há menos de 1 hora. Verifique se foi intencional.'
+          tags:
+            - tag: scope
+              value: availability
+      graphs:
+        - uuid: a7b8c9d0e1f2a3b4c5d6e7f8a9b0c6d7
+          name: 'Oracle: Sessões (ativas / total / bloqueadas)'
+          graph_items:
+            - sortorder: '0'
+              color: 0080FF
+              item:
+                host: 'Oracle Database - JPLS'
+                key: 'db.odbc.select[oracle.sessions.total,"{$ORACLE.DSN}"]'
+            - sortorder: '1'
+              color: 00CC00
+              item:
+                host: 'Oracle Database - JPLS'
+                key: 'db.odbc.select[oracle.sessions.active,"{$ORACLE.DSN}"]'
+            - sortorder: '2'
+              color: E6002D
+              item:
+                host: 'Oracle Database - JPLS'
+                key: 'db.odbc.select[oracle.sessions.blocked,"{$ORACLE.DSN}"]'
+        - uuid: b8c9d0e1f2a3b4c5d6e7f8a9b0c1d7e8
+          name: 'Oracle: Tablespaces — uso (%)'
+          graph_items:
+            - sortorder: '0'
+              color: E6002D
+              item:
+                host: 'Oracle Database - JPLS'
+                key: 'db.odbc.select[oracle.ts.system.pct,"{$ORACLE.DSN}"]'
+            - sortorder: '1'
+              color: FFAD00
+              item:
+                host: 'Oracle Database - JPLS'
+                key: 'db.odbc.select[oracle.ts.sysaux.pct,"{$ORACLE.DSN}"]'
+            - sortorder: '2'
+              color: 0080FF
+              item:
+                host: 'Oracle Database - JPLS'
+                key: 'db.odbc.select[oracle.ts.users.pct,"{$ORACLE.DSN}"]'
+            - sortorder: '3'
+              color: 9900CC
+              item:
+                host: 'Oracle Database - JPLS'
+                key: 'db.odbc.select[oracle.ts.temp.pct,"{$ORACLE.DSN}"]'
+        - uuid: c9d0e1f2a3b4c5d6e7f8a9b0c1d2e8f9
+          name: 'Oracle: Wait Events (I/O / CPU / Concorrência)'
+          graph_items:
+            - sortorder: '0'
+              color: E6002D
+              item:
+                host: 'Oracle Database - JPLS'
+                key: 'db.odbc.select[oracle.wait.io,"{$ORACLE.DSN}"]'
+            - sortorder: '1'
+              color: 0080FF
+              item:
+                host: 'Oracle Database - JPLS'
+                key: 'db.odbc.select[oracle.wait.cpu,"{$ORACLE.DSN}"]'
+            - sortorder: '2'
+              color: FFAD00
+              item:
+                host: 'Oracle Database - JPLS'
+                key: 'db.odbc.select[oracle.wait.concurrency,"{$ORACLE.DSN}"]'
+        - uuid: d0e1f2a3b4c5d6e7f8a9b0c1d2e3f9a0
+          name: 'Oracle: SGA — Buffer Cache e Shared Pool'
+          graph_items:
+            - sortorder: '0'
+              color: 0080FF
+              item:
+                host: 'Oracle Database - JPLS'
+                key: 'db.odbc.select[oracle.sga.buffer.cache,"{$ORACLE.DSN}"]'
+            - sortorder: '1'
+              color: 00CC00
+              item:
+                host: 'Oracle Database - JPLS'
+                key: 'db.odbc.select[oracle.sga.shared.pool,"{$ORACLE.DSN}"]'

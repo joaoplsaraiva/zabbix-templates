@@ -1,0 +1,718 @@
+zabbix_export:
+  version: '7.0'
+  template_groups:
+    - uuid: h128i799g79ki9f32f4ieg8gg4kig367
+      name: 'Templates/Databases'
+  templates:
+    - uuid: 4c8d0e9f5a1b2c3d4e5f6a7b8c9d0e1f
+      template: 'MySQL - JPLS'
+      name: 'MySQL - JPLS'
+      description: |
+        Template de monitoramento completo para MySQL/MariaDB via Zabbix Agent 2.
+        Cobre: processo, conexões, queries, InnoDB, replicação, tabelas,
+        cache, locks, erros e disponibilidade.
+
+        Desenvolvido por João Paulo de Lima Saraiva
+        Baseado em uso real do MySQL na SEFA/PA como banco de dados
+        de sistemas internos, ferramentas de monitoramento e aplicações web.
+
+        Compatível com Zabbix 6.0 LTS e 7.0 LTS
+        Requer: Zabbix Agent 2 com plugin MySQL habilitado
+
+        Pré-requisito: criar usuário de monitoramento no MySQL
+          CREATE USER 'zabbix'@'localhost' IDENTIFIED BY 'SUA_SENHA';
+          GRANT USAGE, REPLICATION CLIENT, PROCESS, SHOW DATABASES,
+                SHOW VIEW ON *.* TO 'zabbix'@'localhost';
+          FLUSH PRIVILEGES;
+
+        Configurar credenciais no Zabbix Agent 2:
+          /etc/zabbix/zabbix_agent2.d/mysql.conf
+          Plugins.Mysql.Sessions.Prod.Uri=tcp://localhost:3306
+          Plugins.Mysql.Sessions.Prod.User=zabbix
+          Plugins.Mysql.Sessions.Prod.Password=SUA_SENHA
+
+        Repositório: https://github.com/joaoplsaraiva/zabbix-templates
+      groups:
+        - name: 'Templates/Databases'
+      macros:
+        - macro: '{$MYSQL.DSN}'
+          value: 'tcp://localhost:3306'
+          description: 'DSN de conexão ao MySQL (tcp://host:porta ou unix:///caminho/socket.sock)'
+        - macro: '{$MYSQL.USER}'
+          value: 'zabbix'
+          description: 'Usuário de monitoramento do MySQL'
+        - macro: '{$MYSQL.PASSWORD}'
+          value: ''
+          description: 'Senha do usuário de monitoramento (use Secret no Zabbix)'
+        - macro: '{$MYSQL.CONNECTIONS.MAX.WARN}'
+          value: '80'
+          description: 'Percentual de conexões usadas para alerta'
+        - macro: '{$MYSQL.CONNECTIONS.MAX.CRIT}'
+          value: '95'
+          description: 'Percentual de conexões usadas — crítico'
+        - macro: '{$MYSQL.SLOW.QUERIES.WARN}'
+          value: '5'
+          description: 'Slow queries por segundo para alerta'
+        - macro: '{$MYSQL.REPL.LAG.WARN}'
+          value: '30'
+          description: 'Lag de replicação em segundos para alerta'
+        - macro: '{$MYSQL.REPL.LAG.CRIT}'
+          value: '300'
+          description: 'Lag de replicação crítico em segundos (5 minutos)'
+        - macro: '{$MYSQL.INNODB.BUFFER.UTIL.WARN}'
+          value: '95'
+          description: 'Utilização do InnoDB Buffer Pool para alerta (%)'
+        - macro: '{$MYSQL.LOCK.WAIT.WARN}'
+          value: '5'
+          description: 'Lock waits por segundo para alerta'
+      items:
+        # ========================
+        # PROCESSO
+        # ========================
+        - uuid: a1b2c3d4e5f6a7b8c9d0e1f2a3b4c7d0
+          name: 'MySQL: processo em execução'
+          type: ZABBIX_ACTIVE
+          key: 'proc.num[mysqld]'
+          delay: '60s'
+          history: 7d
+          trends: 365d
+          description: 'Número de processos mysqld em execução. Deve ser >= 1.'
+          tags:
+            - tag: component
+              value: process
+        - uuid: b2c3d4e5f6a7b8c9d0e1f2a3b4c5d8e1
+          name: 'MySQL: tempo de resposta ao ping'
+          type: ZABBIX_ACTIVE
+          key: 'mysql.ping["{$MYSQL.DSN}","{$MYSQL.USER}","{$MYSQL.PASSWORD}"]'
+          delay: '60s'
+          history: 7d
+          trends: 365d
+          units: s
+          description: |
+            Tempo de resposta ao ping do MySQL.
+            Também valida que o servidor está aceitando conexões.
+            0 = não responde | > 0 = respondendo (valor em segundos).
+          tags:
+            - tag: component
+              value: availability
+        - uuid: c3d4e5f6a7b8c9d0e1f2a3b4c5d6e9f2
+          name: 'MySQL: versão do servidor'
+          type: ZABBIX_ACTIVE
+          key: 'mysql.get_status_variables["{$MYSQL.DSN}","{$MYSQL.USER}","{$MYSQL.PASSWORD}"]'
+          delay: '1h'
+          history: 30d
+          trends: '0'
+          value_type: CHAR
+          description: 'Versão do MySQL/MariaDB instalada'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.version'
+          tags:
+            - tag: component
+              value: system
+        - uuid: d4e5f6a7b8c9d0e1f2a3b4c5d6e7f0a3
+          name: 'MySQL: uptime do servidor (segundos)'
+          type: ZABBIX_ACTIVE
+          key: 'mysql.get_status_variables["{$MYSQL.DSN}","{$MYSQL.USER}","{$MYSQL.PASSWORD}"]'
+          delay: '60s'
+          history: 7d
+          trends: 365d
+          units: uptime
+          description: 'Tempo desde o último start/restart do MySQL'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.uptime'
+          tags:
+            - tag: component
+              value: system
+        # ========================
+        # CONEXÕES
+        # ========================
+        - uuid: e5f6a7b8c9d0e1f2a3b4c5d6e7f8a1b4
+          name: 'MySQL: conexões ativas no momento'
+          type: ZABBIX_ACTIVE
+          key: 'mysql.get_status_variables["{$MYSQL.DSN}","{$MYSQL.USER}","{$MYSQL.PASSWORD}"]'
+          delay: '60s'
+          history: 7d
+          trends: 365d
+          description: 'Número de conexões de clientes abertas no momento (Threads_connected)'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.threads_connected'
+          tags:
+            - tag: component
+              value: connections
+        - uuid: f6a7b8c9d0e1f2a3b4c5d6e7f8a9b2c5
+          name: 'MySQL: conexões máximas configuradas (max_connections)'
+          type: ZABBIX_ACTIVE
+          key: 'mysql.get_variables["{$MYSQL.DSN}","{$MYSQL.USER}","{$MYSQL.PASSWORD}"]'
+          delay: '1h'
+          history: 7d
+          trends: 365d
+          description: 'Valor configurado para max_connections no MySQL'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.max_connections'
+          tags:
+            - tag: component
+              value: connections
+        - uuid: a7b8c9d0e1f2a3b4c5d6e7f8a9b0c3d6
+          name: 'MySQL: pico máximo de conexões simultâneas (Max_used_connections)'
+          type: ZABBIX_ACTIVE
+          key: 'mysql.get_status_variables["{$MYSQL.DSN}","{$MYSQL.USER}","{$MYSQL.PASSWORD}"]'
+          delay: '60s'
+          history: 7d
+          trends: 365d
+          description: 'Maior número de conexões simultâneas desde o start do servidor'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.max_used_connections'
+          tags:
+            - tag: component
+              value: connections
+        - uuid: b8c9d0e1f2a3b4c5d6e7f8a9b0c1d4e7
+          name: 'MySQL: conexões recusadas (Connection_errors_max_connections)'
+          type: ZABBIX_ACTIVE
+          key: 'mysql.get_status_variables["{$MYSQL.DSN}","{$MYSQL.USER}","{$MYSQL.PASSWORD}"]'
+          delay: '60s'
+          history: 7d
+          trends: 365d
+          description: |
+            Conexões recusadas por atingir o limite max_connections.
+            Qualquer valor > 0 indica que clientes estão sendo rejeitados.
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.connection_errors_max_connections'
+            - type: CHANGE_PER_SECOND
+              parameters:
+                - ''
+          tags:
+            - tag: component
+              value: connections
+        - uuid: c9d0e1f2a3b4c5d6e7f8a9b0c1d2e5f8
+          name: 'MySQL: percentual de conexões usadas (%)'
+          type: CALCULATED
+          key: 'mysql.connections.util'
+          delay: '60s'
+          history: 7d
+          trends: 365d
+          units: '%'
+          params: 'last("mysql.get_status_variables[\"{$MYSQL.DSN}\",\"{$MYSQL.USER}\",\"{$MYSQL.PASSWORD}\"]","$.threads_connected") / last("mysql.get_variables[\"{$MYSQL.DSN}\",\"{$MYSQL.USER}\",\"{$MYSQL.PASSWORD}\"]","$.max_connections") * 100'
+          description: 'Percentual de conexões em uso em relação ao max_connections'
+          tags:
+            - tag: component
+              value: connections
+        # ========================
+        # QUERIES E DESEMPENHO
+        # ========================
+        - uuid: d0e1f2a3b4c5d6e7f8a9b0c1d2e3f6a9
+          name: 'MySQL: queries por segundo (QPS)'
+          type: ZABBIX_ACTIVE
+          key: 'mysql.get_status_variables["{$MYSQL.DSN}","{$MYSQL.USER}","{$MYSQL.PASSWORD}"]'
+          delay: '60s'
+          history: 7d
+          trends: 365d
+          units: qps
+          description: 'Taxa de queries executadas por segundo (Questions)'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.questions'
+            - type: CHANGE_PER_SECOND
+              parameters:
+                - ''
+          tags:
+            - tag: component
+              value: performance
+        - uuid: e1f2a3b4c5d6e7f8a9b0c1d2e3f4a7b0
+          name: 'MySQL: slow queries por segundo'
+          type: ZABBIX_ACTIVE
+          key: 'mysql.get_status_variables["{$MYSQL.DSN}","{$MYSQL.USER}","{$MYSQL.PASSWORD}"]'
+          delay: '60s'
+          history: 7d
+          trends: 365d
+          units: qps
+          description: |
+            Taxa de queries lentas por segundo (acima do long_query_time configurado).
+            Slow queries indicam falta de índices, queries mal escritas ou carga excessiva.
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.slow_queries'
+            - type: CHANGE_PER_SECOND
+              parameters:
+                - ''
+          tags:
+            - tag: component
+              value: performance
+        - uuid: f2a3b4c5d6e7f8a9b0c1d2e3f4a5b8c1
+          name: 'MySQL: selects por segundo'
+          type: ZABBIX_ACTIVE
+          key: 'mysql.get_status_variables["{$MYSQL.DSN}","{$MYSQL.USER}","{$MYSQL.PASSWORD}"]'
+          delay: '60s'
+          history: 7d
+          trends: 365d
+          units: qps
+          description: 'Taxa de SELECTs por segundo (Com_select)'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.com_select'
+            - type: CHANGE_PER_SECOND
+              parameters:
+                - ''
+          tags:
+            - tag: component
+              value: performance
+        - uuid: a3b4c5d6e7f8a9b0c1d2e3f4a5b6c9d2
+          name: 'MySQL: inserts por segundo'
+          type: ZABBIX_ACTIVE
+          key: 'mysql.get_status_variables["{$MYSQL.DSN}","{$MYSQL.USER}","{$MYSQL.PASSWORD}"]'
+          delay: '60s'
+          history: 7d
+          trends: 365d
+          units: qps
+          description: 'Taxa de INSERTs por segundo (Com_insert)'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.com_insert'
+            - type: CHANGE_PER_SECOND
+              parameters:
+                - ''
+          tags:
+            - tag: component
+              value: performance
+        - uuid: b4c5d6e7f8a9b0c1d2e3f4a5b6c7d0e3
+          name: 'MySQL: updates por segundo'
+          type: ZABBIX_ACTIVE
+          key: 'mysql.get_status_variables["{$MYSQL.DSN}","{$MYSQL.USER}","{$MYSQL.PASSWORD}"]'
+          delay: '60s'
+          history: 7d
+          trends: 365d
+          units: qps
+          description: 'Taxa de UPDATEs por segundo (Com_update)'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.com_update'
+            - type: CHANGE_PER_SECOND
+              parameters:
+                - ''
+          tags:
+            - tag: component
+              value: performance
+        - uuid: c5d6e7f8a9b0c1d2e3f4a5b6c7d8e1f4
+          name: 'MySQL: deletes por segundo'
+          type: ZABBIX_ACTIVE
+          key: 'mysql.get_status_variables["{$MYSQL.DSN}","{$MYSQL.USER}","{$MYSQL.PASSWORD}"]'
+          delay: '60s'
+          history: 7d
+          trends: 365d
+          units: qps
+          description: 'Taxa de DELETEs por segundo (Com_delete)'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.com_delete'
+            - type: CHANGE_PER_SECOND
+              parameters:
+                - ''
+          tags:
+            - tag: component
+              value: performance
+        # ========================
+        # INNODB
+        # ========================
+        - uuid: d6e7f8a9b0c1d2e3f4a5b6c7d8e9f2a5
+          name: 'MySQL: InnoDB Buffer Pool — tamanho total (bytes)'
+          type: ZABBIX_ACTIVE
+          key: 'mysql.get_status_variables["{$MYSQL.DSN}","{$MYSQL.USER}","{$MYSQL.PASSWORD}"]'
+          delay: '1h'
+          history: 7d
+          trends: 365d
+          units: B
+          description: 'Tamanho total do InnoDB Buffer Pool configurado'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.innodb_buffer_pool_pages_total'
+            - type: MULTIPLIER
+              parameters:
+                - '16384'
+          tags:
+            - tag: component
+              value: innodb
+        - uuid: e7f8a9b0c1d2e3f4a5b6c7d8e9f0a3b6
+          name: 'MySQL: InnoDB Buffer Pool — páginas sujas (%)'
+          type: ZABBIX_ACTIVE
+          key: 'mysql.get_status_variables["{$MYSQL.DSN}","{$MYSQL.USER}","{$MYSQL.PASSWORD}"]'
+          delay: '60s'
+          history: 7d
+          trends: 365d
+          units: '%'
+          description: |
+            Percentual de páginas sujas (dirty pages) no Buffer Pool.
+            Páginas sujas são modificadas em memória mas ainda não escritas em disco.
+            Alto percentual pode indicar I/O insuficiente.
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.innodb_buffer_pool_pages_dirty'
+          tags:
+            - tag: component
+              value: innodb
+        - uuid: f8a9b0c1d2e3f4a5b6c7d8e9f0a1b4c7
+          name: 'MySQL: InnoDB leituras de disco por segundo'
+          type: ZABBIX_ACTIVE
+          key: 'mysql.get_status_variables["{$MYSQL.DSN}","{$MYSQL.USER}","{$MYSQL.PASSWORD}"]'
+          delay: '60s'
+          history: 7d
+          trends: 365d
+          units: ops/s
+          description: |
+            Taxa de leituras físicas de disco por segundo (Innodb_data_reads).
+            Alto valor indica que o Buffer Pool é muito pequeno para o workload.
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.innodb_data_reads'
+            - type: CHANGE_PER_SECOND
+              parameters:
+                - ''
+          tags:
+            - tag: component
+              value: innodb
+        - uuid: a9b0c1d2e3f4a5b6c7d8e9f0a1b2c5d8
+          name: 'MySQL: InnoDB escritas em disco por segundo'
+          type: ZABBIX_ACTIVE
+          key: 'mysql.get_status_variables["{$MYSQL.DSN}","{$MYSQL.USER}","{$MYSQL.PASSWORD}"]'
+          delay: '60s'
+          history: 7d
+          trends: 365d
+          units: ops/s
+          description: 'Taxa de escritas físicas em disco por segundo (Innodb_data_writes)'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.innodb_data_writes'
+            - type: CHANGE_PER_SECOND
+              parameters:
+                - ''
+          tags:
+            - tag: component
+              value: innodb
+        # ========================
+        # LOCKS
+        # ========================
+        - uuid: b0c1d2e3f4a5b6c7d8e9f0a1b2c3d6e9
+          name: 'MySQL: lock waits por segundo'
+          type: ZABBIX_ACTIVE
+          key: 'mysql.get_status_variables["{$MYSQL.DSN}","{$MYSQL.USER}","{$MYSQL.PASSWORD}"]'
+          delay: '60s'
+          history: 7d
+          trends: 365d
+          units: ops/s
+          description: |
+            Taxa de lock waits InnoDB por segundo.
+            Lock waits frequentes indicam contenção — queries competindo por locks.
+            Investigue com: SELECT * FROM information_schema.innodb_lock_waits;
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.innodb_row_lock_waits'
+            - type: CHANGE_PER_SECOND
+              parameters:
+                - ''
+          tags:
+            - tag: component
+              value: locks
+        - uuid: c1d2e3f4a5b6c7d8e9f0a1b2c3d4e7f0
+          name: 'MySQL: tempo médio de espera em lock (ms)'
+          type: ZABBIX_ACTIVE
+          key: 'mysql.get_status_variables["{$MYSQL.DSN}","{$MYSQL.USER}","{$MYSQL.PASSWORD}"]'
+          delay: '60s'
+          history: 7d
+          trends: 365d
+          units: ms
+          description: 'Tempo médio de espera em lock InnoDB (Innodb_row_lock_time_avg)'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.innodb_row_lock_time_avg'
+          tags:
+            - tag: component
+              value: locks
+        # ========================
+        # REPLICAÇÃO
+        # ========================
+        - uuid: d2e3f4a5b6c7d8e9f0a1b2c3d4e5f8a1
+          name: 'MySQL: replicação — SQL Thread rodando'
+          type: ZABBIX_ACTIVE
+          key: 'mysql.replication.get_slave_status["{$MYSQL.DSN}","{$MYSQL.USER}","{$MYSQL.PASSWORD}"]'
+          delay: '60s'
+          history: 7d
+          trends: '0'
+          value_type: CHAR
+          description: |
+            Status do SQL Thread da replicação (Yes = rodando).
+            Parâmetro Slave_SQL_Running.
+            SQL Thread parado = replicação atrasada ou com erro.
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.slave_sql_running'
+          tags:
+            - tag: component
+              value: replication
+        - uuid: e3f4a5b6c7d8e9f0a1b2c3d4e5f6a9b2
+          name: 'MySQL: replicação — IO Thread rodando'
+          type: ZABBIX_ACTIVE
+          key: 'mysql.replication.get_slave_status["{$MYSQL.DSN}","{$MYSQL.USER}","{$MYSQL.PASSWORD}"]'
+          delay: '60s'
+          history: 7d
+          trends: '0'
+          value_type: CHAR
+          description: |
+            Status do IO Thread da replicação (Yes = rodando).
+            IO Thread parado = slave não está recebendo eventos do master.
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.slave_io_running'
+          tags:
+            - tag: component
+              value: replication
+        - uuid: f4a5b6c7d8e9f0a1b2c3d4e5f6a7b0c3
+          name: 'MySQL: replicação — lag (Seconds_Behind_Master)'
+          type: ZABBIX_ACTIVE
+          key: 'mysql.replication.get_slave_status["{$MYSQL.DSN}","{$MYSQL.USER}","{$MYSQL.PASSWORD}"]'
+          delay: '60s'
+          history: 7d
+          trends: 365d
+          units: s
+          description: |
+            Atraso do slave em relação ao master em segundos.
+            0 = slave sincronizado | null = replicação parada.
+            Alto lag pode causar leituras desatualizadas em slaves de leitura.
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.seconds_behind_master'
+          tags:
+            - tag: component
+              value: replication
+        # ========================
+        # TRÁFEGO DE REDE
+        # ========================
+        - uuid: a5b6c7d8e9f0a1b2c3d4e5f6a7b8c1d4
+          name: 'MySQL: bytes recebidos por segundo'
+          type: ZABBIX_ACTIVE
+          key: 'mysql.get_status_variables["{$MYSQL.DSN}","{$MYSQL.USER}","{$MYSQL.PASSWORD}"]'
+          delay: '60s'
+          history: 7d
+          trends: 365d
+          units: Bps
+          description: 'Bytes recebidos pelos clientes MySQL por segundo (Bytes_received)'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.bytes_received'
+            - type: CHANGE_PER_SECOND
+              parameters:
+                - ''
+          tags:
+            - tag: component
+              value: traffic
+        - uuid: b6c7d8e9f0a1b2c3d4e5f6a7b8c9d2e5
+          name: 'MySQL: bytes enviados por segundo'
+          type: ZABBIX_ACTIVE
+          key: 'mysql.get_status_variables["{$MYSQL.DSN}","{$MYSQL.USER}","{$MYSQL.PASSWORD}"]'
+          delay: '60s'
+          history: 7d
+          trends: 365d
+          units: Bps
+          description: 'Bytes enviados aos clientes MySQL por segundo (Bytes_sent)'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.bytes_sent'
+            - type: CHANGE_PER_SECOND
+              parameters:
+                - ''
+          tags:
+            - tag: component
+              value: traffic
+      triggers:
+        - uuid: c7d8e9f0a1b2c3d4e5f6a7b8c9d0e3f6
+          expression: 'last(/MySQL - JPLS/proc.num[mysqld]) = 0'
+          name: 'MySQL: processo não está em execução em {HOST.NAME}'
+          priority: DISASTER
+          description: 'O processo mysqld parou. Banco de dados indisponível.'
+          tags:
+            - tag: scope
+              value: availability
+        - uuid: d8e9f0a1b2c3d4e5f6a7b8c9d0e1f4a7
+          expression: 'last(/MySQL - JPLS/mysql.ping["{$MYSQL.DSN}","{$MYSQL.USER}","{$MYSQL.PASSWORD}"]) = 0'
+          name: 'MySQL: sem resposta ao ping em {HOST.NAME}'
+          priority: HIGH
+          description: 'MySQL não responde ao ping. Verifique processo, porta e credenciais.'
+          tags:
+            - tag: scope
+              value: availability
+        - uuid: e9f0a1b2c3d4e5f6a7b8c9d0e1f2a5b8
+          expression: 'last(/MySQL - JPLS/mysql.connections.util) >= {$MYSQL.CONNECTIONS.MAX.CRIT}'
+          name: 'MySQL: conexões críticas (> {$MYSQL.CONNECTIONS.MAX.CRIT}%) em {HOST.NAME}'
+          opdata: 'Conexões: {ITEM.LASTVALUE}'
+          priority: HIGH
+          description: |
+            Quase no limite de max_connections.
+            Novas conexões serão recusadas com erro "Too many connections".
+            Aumente max_connections ou implemente connection pooling.
+          tags:
+            - tag: scope
+              value: capacity
+        - uuid: f0a1b2c3d4e5f6a7b8c9d0e1f2a3b6c9
+          expression: 'last(/MySQL - JPLS/mysql.connections.util) >= {$MYSQL.CONNECTIONS.MAX.WARN} and last(/MySQL - JPLS/mysql.connections.util) < {$MYSQL.CONNECTIONS.MAX.CRIT}'
+          name: 'MySQL: conexões elevadas (> {$MYSQL.CONNECTIONS.MAX.WARN}%) em {HOST.NAME}'
+          opdata: 'Conexões: {ITEM.LASTVALUE}'
+          priority: WARNING
+          dependencies:
+            - name: 'MySQL: conexões críticas (> {$MYSQL.CONNECTIONS.MAX.CRIT}%) em {HOST.NAME}'
+              expression: 'last(/MySQL - JPLS/mysql.connections.util) >= {$MYSQL.CONNECTIONS.MAX.CRIT}'
+          tags:
+            - tag: scope
+              value: capacity
+        - uuid: a1b2c3d4e5f6a7b8c9d0e1f2a3b4c8d0
+          expression: 'avg(/MySQL - JPLS/mysql.get_status_variables["{$MYSQL.DSN}","{$MYSQL.USER}","{$MYSQL.PASSWORD}"],5m) >= {$MYSQL.SLOW.QUERIES.WARN}'
+          name: 'MySQL: slow queries elevadas (> {$MYSQL.SLOW.QUERIES.WARN}/s) em {HOST.NAME}'
+          opdata: 'Slow queries/s: {ITEM.LASTVALUE}'
+          priority: WARNING
+          description: |
+            Alto número de slow queries. Analise com:
+              SHOW FULL PROCESSLIST;
+              SELECT * FROM performance_schema.events_statements_summary_by_digest
+              ORDER BY sum_timer_wait DESC LIMIT 10;
+          tags:
+            - tag: scope
+              value: performance
+        - uuid: b2c3d4e5f6a7b8c9d0e1f2a3b4c5d9e1
+          expression: 'last(/MySQL - JPLS/mysql.get_status_variables["{$MYSQL.DSN}","{$MYSQL.USER}","{$MYSQL.PASSWORD}"]) >= {$MYSQL.LOCK.WAIT.WARN}'
+          name: 'MySQL: lock waits elevados (> {$MYSQL.LOCK.WAIT.WARN}/s) em {HOST.NAME}'
+          opdata: 'Lock waits/s: {ITEM.LASTVALUE}'
+          priority: WARNING
+          description: 'Contenção de locks detectada. Queries concorrentes disputando os mesmos dados.'
+          tags:
+            - tag: scope
+              value: performance
+        - uuid: c3d4e5f6a7b8c9d0e1f2a3b4c5d6e0f2
+          expression: 'last(/MySQL - JPLS/mysql.replication.get_slave_status["{$MYSQL.DSN}","{$MYSQL.USER}","{$MYSQL.PASSWORD}"])<>"Yes"'
+          name: 'MySQL: replicação — SQL Thread parado em {HOST.NAME}'
+          priority: HIGH
+          description: |
+            O SQL Thread da replicação parou.
+            Replicação não está sendo aplicada no slave.
+            Verifique: SHOW SLAVE STATUS\G e o error log do MySQL.
+          tags:
+            - tag: scope
+              value: replication
+        - uuid: d4e5f6a7b8c9d0e1f2a3b4c5d6e7f1a3
+          expression: 'last(/MySQL - JPLS/mysql.replication.get_slave_status["{$MYSQL.DSN}","{$MYSQL.USER}","{$MYSQL.PASSWORD}"]) >= {$MYSQL.REPL.LAG.CRIT}'
+          name: 'MySQL: replicação — lag crítico (> {$MYSQL.REPL.LAG.CRIT}s) em {HOST.NAME}'
+          opdata: 'Lag: {ITEM.LASTVALUE}s'
+          priority: HIGH
+          description: 'Slave com atraso crítico em relação ao master. Dados desatualizados.'
+          tags:
+            - tag: scope
+              value: replication
+        - uuid: e5f6a7b8c9d0e1f2a3b4c5d6e7f8a2b4
+          expression: 'last(/MySQL - JPLS/mysql.replication.get_slave_status["{$MYSQL.DSN}","{$MYSQL.USER}","{$MYSQL.PASSWORD}"]) >= {$MYSQL.REPL.LAG.WARN} and last(/MySQL - JPLS/mysql.replication.get_slave_status["{$MYSQL.DSN}","{$MYSQL.USER}","{$MYSQL.PASSWORD}"]) < {$MYSQL.REPL.LAG.CRIT}'
+          name: 'MySQL: replicação — lag elevado (> {$MYSQL.REPL.LAG.WARN}s) em {HOST.NAME}'
+          opdata: 'Lag: {ITEM.LASTVALUE}s'
+          priority: WARNING
+          dependencies:
+            - name: 'MySQL: replicação — lag crítico (> {$MYSQL.REPL.LAG.CRIT}s) em {HOST.NAME}'
+              expression: 'last(/MySQL - JPLS/mysql.replication.get_slave_status["{$MYSQL.DSN}","{$MYSQL.USER}","{$MYSQL.PASSWORD}"]) >= {$MYSQL.REPL.LAG.CRIT}'
+          tags:
+            - tag: scope
+              value: replication
+        - uuid: f6a7b8c9d0e1f2a3b4c5d6e7f8a9b3c5
+          expression: 'last(/MySQL - JPLS/mysql.get_status_variables["{$MYSQL.DSN}","{$MYSQL.USER}","{$MYSQL.PASSWORD}"]) > 0'
+          name: 'MySQL: conexões sendo recusadas por max_connections em {HOST.NAME}'
+          priority: HIGH
+          description: 'Clientes estão recebendo erro "Too many connections". Ação imediata necessária.'
+          tags:
+            - tag: scope
+              value: availability
+        - uuid: a7b8c9d0e1f2a3b4c5d6e7f8a9b0c4d6
+          expression: 'last(/MySQL - JPLS/mysql.get_status_variables["{$MYSQL.DSN}","{$MYSQL.USER}","{$MYSQL.PASSWORD}"]) < 600'
+          name: 'MySQL: servidor reiniciado recentemente em {HOST.NAME}'
+          priority: WARNING
+          description: 'MySQL reiniciado há menos de 10 minutos. Verifique se foi intencional.'
+          tags:
+            - tag: scope
+              value: availability
+      graphs:
+        - uuid: b8c9d0e1f2a3b4c5d6e7f8a9b0c1d5e7
+          name: 'MySQL: Conexões'
+          graph_items:
+            - sortorder: '0'
+              color: 0080FF
+              item:
+                host: 'MySQL - JPLS'
+                key: 'mysql.get_status_variables["{$MYSQL.DSN}","{$MYSQL.USER}","{$MYSQL.PASSWORD}"]'
+            - sortorder: '1'
+              color: E6002D
+              item:
+                host: 'MySQL - JPLS'
+                key: 'mysql.connections.util'
+        - uuid: c9d0e1f2a3b4c5d6e7f8a9b0c1d2e6f8
+          name: 'MySQL: Queries por Tipo (QPS)'
+          graph_items:
+            - sortorder: '0'
+              color: 0080FF
+              item:
+                host: 'MySQL - JPLS'
+                key: 'mysql.get_status_variables["{$MYSQL.DSN}","{$MYSQL.USER}","{$MYSQL.PASSWORD}"]'
+            - sortorder: '1'
+              color: 00CC00
+              item:
+                host: 'MySQL - JPLS'
+                key: 'mysql.get_status_variables["{$MYSQL.DSN}","{$MYSQL.USER}","{$MYSQL.PASSWORD}"]'
+            - sortorder: '2'
+              color: FFAD00
+              item:
+                host: 'MySQL - JPLS'
+                key: 'mysql.get_status_variables["{$MYSQL.DSN}","{$MYSQL.USER}","{$MYSQL.PASSWORD}"]'
+            - sortorder: '3'
+              color: E6002D
+              item:
+                host: 'MySQL - JPLS'
+                key: 'mysql.get_status_variables["{$MYSQL.DSN}","{$MYSQL.USER}","{$MYSQL.PASSWORD}"]'
+        - uuid: d0e1f2a3b4c5d6e7f8a9b0c1d2e3f7a9
+          name: 'MySQL: InnoDB I/O (leituras e escritas/s)'
+          graph_items:
+            - sortorder: '0'
+              color: 00CC00
+              item:
+                host: 'MySQL - JPLS'
+                key: 'mysql.get_status_variables["{$MYSQL.DSN}","{$MYSQL.USER}","{$MYSQL.PASSWORD}"]'
+            - sortorder: '1'
+              color: E6002D
+              item:
+                host: 'MySQL - JPLS'
+                key: 'mysql.get_status_variables["{$MYSQL.DSN}","{$MYSQL.USER}","{$MYSQL.PASSWORD}"]'
+        - uuid: e1f2a3b4c5d6e7f8a9b0c1d2e3f4a8b0
+          name: 'MySQL: Replicação — Lag (segundos)'
+          graph_items:
+            - sortorder: '0'
+              color: E6002D
+              item:
+                host: 'MySQL - JPLS'
+                key: 'mysql.replication.get_slave_status["{$MYSQL.DSN}","{$MYSQL.USER}","{$MYSQL.PASSWORD}"]'

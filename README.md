@@ -31,8 +31,9 @@ zabbix-templates/
 │   ├── template_docker.yaml               # Docker — daemon, containers LLD, imagens, CPU/mem por container
 │   └── README.md
 ├── database/
-│   ├── template_mysql.yaml               # em breve
-│   └── template_oracle_db.yaml           # em breve
+│   ├── template_mysql.yaml               # MySQL — conexões, QPS, InnoDB, slow queries, replicação
+│   ├── template_oracle_db.yaml           # Oracle DB — instância, tablespaces, sessões, RMAN, wait events
+│   └── README.md
 ├── kubernetes/
 │   ├── template_k8s_nodes.yaml           # em breve
 │   └── template_k8s_pods.yaml            # em breve
@@ -54,8 +55,8 @@ zabbix-templates/
 | [HAProxy](./services/template_haproxy.yaml) | Services | 6.0+ / 7.0+ | HTTP Agent | ✅ Disponível |
 | [Apache HTTP Server](./services/template_apache.yaml) | Services | 6.0+ / 7.0+ | Zabbix Agent | ✅ Disponível |
 | [Docker](./services/template_docker.yaml) | Services | 6.0+ / 7.0+ | Agent 2 | ✅ Disponível |
-| MySQL | Database | 6.0+ / 7.0+ | Agent 2 | 🔧 Em breve |
-| Oracle DB | Database | 6.0+ / 7.0+ | ODBC | 🔧 Em breve |
+| [MySQL](./database/template_mysql.yaml) | Database | 6.0+ / 7.0+ | Agent 2 | ✅ Disponível |
+| [Oracle Database](./database/template_oracle_db.yaml) | Database | 6.0+ / 7.0+ | ODBC | ✅ Disponível |
 | Kubernetes Nodes | Kubernetes | 6.0+ / 7.0+ | HTTP API | 🔧 Em breve |
 
 ---

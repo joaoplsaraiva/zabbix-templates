@@ -100,13 +100,10 @@ Os templates foram criados com base na infraestrutura real da SEFA:
 ## Como Contribuir / Expandir
 
 ### Próximos templates planejados
-1. `network/template_mikrotik_snmp.yaml` — MikroTik via SNMP v2c (cert SENAI 60h)
-2. `network/template_switch_datacom.yaml` — Switches DATACOM DM1200E
-3. `services/template_haproxy.yaml` — HAProxy frontend/backend/sessions
-4. `services/template_docker.yaml` — Docker containers via Agent 2
-5. `database/template_oracle_db.yaml` — Oracle DB via ODBC
-6. `kubernetes/template_k8s_nodes.yaml` — Status de nodes K8s
-7. `scripts/check_certificate.sh` — Valida expiração SSL
+1. `kubernetes/template_k8s_nodes.yaml` — status e recursos dos nodes K8s
+2. `kubernetes/template_k8s_pods.yaml` — pods por namespace, restarts, OOMKill
+3. `scripts/check_certificate.sh` — valida expiração SSL de endpoints
+4. `scripts/check_weblogic.py` — health Oracle WebLogic via WLST
 
 ### Ao criar novo template
 1. Copie a estrutura de um template existente como base
