@@ -1,0 +1,742 @@
+zabbix_export:
+  version: '7.0'
+  template_groups:
+    - uuid: j340k911i91mk1h54h6kig0ii6mki589
+      name: 'Templates/Kubernetes'
+  templates:
+    - uuid: 6e0f2a1b7c3d4e5f6a7b8c9d0e1f2a3b
+      template: 'Kubernetes Nodes - JPLS'
+      name: 'Kubernetes Nodes - JPLS'
+      description: |
+        Template de monitoramento de nodes Kubernetes via HTTP Agent (API REST).
+        Cobre: status dos nodes, pressão de recursos (CPU/memória/disco/PID),
+        condições de saúde, capacidade vs alocado, versão do kubelet,
+        runtime de containers e events do cluster.
+
+        Desenvolvido por João Paulo de Lima Saraiva
+        Baseado em uso real de Kubernetes, OpenShift 4.x e Rancher 2.x
+        na SEFA/PA — ambientes críticos de produção da Secretaria da Fazenda.
+
+        Certificações relacionadas:
+          Red Hat DO280 — OpenShift Administration II (v4.14)
+          Red Hat DO370 — Enterprise Kubernetes Storage (v4.16)
+          Red Hat DO480 — Multicluster Management OpenShift (v2.4)
+
+        Compatível com Zabbix 6.0 LTS e 7.0 LTS
+        Funciona com: Kubernetes 1.24+, OpenShift 4.x, Rancher 2.x
+
+        Pré-requisito: criar ServiceAccount com permissão de leitura
+          kubectl create serviceaccount zabbix-monitor -n kube-system
+          kubectl create clusterrolebinding zabbix-monitor \
+            --clusterrole=view \
+            --serviceaccount=kube-system:zabbix-monitor
+          # Obter token (K8s 1.24+):
+          kubectl create token zabbix-monitor -n kube-system --duration=8760h
+
+        Repositório: https://github.com/joaoplsaraiva/zabbix-templates
+      groups:
+        - name: 'Templates/Kubernetes'
+      macros:
+        - macro: '{$K8S.API.URL}'
+          value: 'https://kubernetes.default.svc:6443'
+          description: 'URL da API do Kubernetes (in-cluster ou externo)'
+        - macro: '{$K8S.API.TOKEN}'
+          value: ''
+          description: 'Bearer token da ServiceAccount de monitoramento (use Secret no Zabbix)'
+        - macro: '{$K8S.NODE.CPU.WARN}'
+          value: '80'
+          description: 'Percentual de CPU alocada no node para alerta'
+        - macro: '{$K8S.NODE.CPU.CRIT}'
+          value: '95'
+          description: 'Percentual de CPU alocada — crítico'
+        - macro: '{$K8S.NODE.MEM.WARN}'
+          value: '80'
+          description: 'Percentual de memória alocada no node para alerta'
+        - macro: '{$K8S.NODE.MEM.CRIT}'
+          value: '95'
+          description: 'Percentual de memória alocada — crítico'
+        - macro: '{$K8S.NODE.PODS.WARN}'
+          value: '90'
+          description: 'Percentual de uso do limite de pods no node para alerta'
+        - macro: '{$K8S.NODE.NOTREADY.TIME}'
+          value: '5m'
+          description: 'Tempo que um node pode ficar NotReady antes de alertar'
+      items:
+        # ========================
+        # CLUSTER — VISÃO GERAL
+        # ========================
+        - uuid: a1b2c3d4e5f6a7b8c9d0e1f2a3b4ca00
+          name: 'K8s: nodes — dados brutos da API'
+          type: HTTP_AGENT
+          key: 'k8s.nodes.get'
+          delay: '60s'
+          history: '0'
+          trends: '0'
+          value_type: TEXT
+          url: '{$K8S.API.URL}/api/v1/nodes'
+          headers:
+            - name: Authorization
+              value: 'Bearer {$K8S.API.TOKEN}'
+            - name: Accept
+              value: 'application/json'
+          verify_peer: 'NO'
+          verify_host: 'NO'
+          description: |
+            Coleta JSON completo de todos os nodes via API Kubernetes.
+            Item master — outros items extraem dados via JSONPath/preprocessing.
+          tags:
+            - tag: component
+              value: cluster
+        - uuid: b2c3d4e5f6a7b8c9d0e1f2a3b4c5db01
+          name: 'K8s: total de nodes no cluster'
+          type: DEPENDENT
+          key: 'k8s.nodes.total'
+          master_item:
+            key: 'k8s.nodes.get'
+          delay: '0'
+          history: 30d
+          trends: 365d
+          description: 'Número total de nodes registrados no cluster'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.items.length()'
+          tags:
+            - tag: component
+              value: cluster
+        - uuid: c3d4e5f6a7b8c9d0e1f2a3b4c5d6ec02
+          name: 'K8s: nodes em status Ready'
+          type: DEPENDENT
+          key: 'k8s.nodes.ready'
+          master_item:
+            key: 'k8s.nodes.get'
+          delay: '0'
+          history: 30d
+          trends: 365d
+          description: |
+            Número de nodes com condição Ready=True.
+            Nodes Ready estão aptos a receber pods agendados pelo scheduler.
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.items[?(@.status.conditions[?(@.type=="Ready")].status=="True")].length()'
+          tags:
+            - tag: component
+              value: cluster
+        - uuid: d4e5f6a7b8c9d0e1f2a3b4c5d6e7fd03
+          name: 'K8s: nodes em status NotReady'
+          type: DEPENDENT
+          key: 'k8s.nodes.not.ready'
+          master_item:
+            key: 'k8s.nodes.get'
+          delay: '0'
+          history: 30d
+          trends: 365d
+          description: |
+            Número de nodes com condição Ready=False ou Unknown.
+            Nodes NotReady não recebem novos pods e os pods existentes podem ser evicted.
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.items[?(@.status.conditions[?(@.type=="Ready")].status!="True")].length()'
+          tags:
+            - tag: component
+              value: cluster
+        - uuid: e5f6a7b8c9d0e1f2a3b4c5d6e7f8ae04
+          name: 'K8s: nodes com MemoryPressure'
+          type: DEPENDENT
+          key: 'k8s.nodes.memory.pressure'
+          master_item:
+            key: 'k8s.nodes.get'
+          delay: '0'
+          history: 30d
+          trends: 365d
+          description: |
+            Número de nodes com condição MemoryPressure=True.
+            MemoryPressure ativa eviction de pods para liberar memória.
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.items[?(@.status.conditions[?(@.type=="MemoryPressure")].status=="True")].length()'
+          tags:
+            - tag: component
+              value: pressure
+        - uuid: f6a7b8c9d0e1f2a3b4c5d6e7f8a9bf05
+          name: 'K8s: nodes com DiskPressure'
+          type: DEPENDENT
+          key: 'k8s.nodes.disk.pressure'
+          master_item:
+            key: 'k8s.nodes.get'
+          delay: '0'
+          history: 30d
+          trends: 365d
+          description: |
+            Número de nodes com condição DiskPressure=True.
+            DiskPressure ocorre quando o disco do node está acima do threshold de eviction.
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.items[?(@.status.conditions[?(@.type=="DiskPressure")].status=="True")].length()'
+          tags:
+            - tag: component
+              value: pressure
+        - uuid: a7b8c9d0e1f2a3b4c5d6e7f8a9b0c006
+          name: 'K8s: nodes com PIDPressure'
+          type: DEPENDENT
+          key: 'k8s.nodes.pid.pressure'
+          master_item:
+            key: 'k8s.nodes.get'
+          delay: '0'
+          history: 30d
+          trends: 365d
+          description: |
+            Número de nodes com condição PIDPressure=True.
+            PIDPressure indica que o node está próximo do limite de processos (PIDs).
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.items[?(@.status.conditions[?(@.type=="PIDPressure")].status=="True")].length()'
+          tags:
+            - tag: component
+              value: pressure
+        - uuid: b8c9d0e1f2a3b4c5d6e7f8a9b0c1d107
+          name: 'K8s: nodes com NetworkUnavailable'
+          type: DEPENDENT
+          key: 'k8s.nodes.network.unavailable'
+          master_item:
+            key: 'k8s.nodes.get'
+          delay: '0'
+          history: 30d
+          trends: 365d
+          description: |
+            Número de nodes com condição NetworkUnavailable=True.
+            Indica problema na configuração de rede do node (CNI plugin com falha).
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.items[?(@.status.conditions[?(@.type=="NetworkUnavailable")].status=="True")].length()'
+          tags:
+            - tag: component
+              value: network
+        # ========================
+        # VERSÃO E RUNTIME
+        # ========================
+        - uuid: c9d0e1f2a3b4c5d6e7f8a9b0c1d2e208
+          name: 'K8s: versão do Kubernetes (server)'
+          type: HTTP_AGENT
+          key: 'k8s.server.version'
+          delay: '1h'
+          history: 30d
+          trends: '0'
+          value_type: CHAR
+          url: '{$K8S.API.URL}/version'
+          headers:
+            - name: Authorization
+              value: 'Bearer {$K8S.API.TOKEN}'
+          verify_peer: 'NO'
+          verify_host: 'NO'
+          description: 'Versão do Kubernetes API Server'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.gitVersion'
+          tags:
+            - tag: component
+              value: system
+        # ========================
+        # EVENTS DO CLUSTER
+        # ========================
+        - uuid: d0e1f2a3b4c5d6e7f8a9b0c1d2e3f309
+          name: 'K8s: events Warning no cluster (última hora)'
+          type: HTTP_AGENT
+          key: 'k8s.events.warning'
+          delay: '5m'
+          history: 7d
+          trends: 365d
+          url: '{$K8S.API.URL}/api/v1/events?fieldSelector=type%3DWarning'
+          headers:
+            - name: Authorization
+              value: 'Bearer {$K8S.API.TOKEN}'
+          verify_peer: 'NO'
+          verify_host: 'NO'
+          description: |
+            Número total de events do tipo Warning no cluster.
+            Events Warning incluem: OOMKill, BackOff, FailedScheduling, Evicted, etc.
+            Alto número indica problemas em pods ou no cluster.
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.items.length()'
+          tags:
+            - tag: component
+              value: events
+        # ========================
+        # CAPACIDADE DO CLUSTER
+        # ========================
+        - uuid: e1f2a3b4c5d6e7f8a9b0c1d2e3f4a40a
+          name: 'K8s: capacidade total de CPU do cluster (millicores)'
+          type: DEPENDENT
+          key: 'k8s.cluster.cpu.capacity'
+          master_item:
+            key: 'k8s.nodes.get'
+          delay: '0'
+          history: 7d
+          trends: 365d
+          units: 'm'
+          description: |
+            Capacidade total de CPU de todos os nodes em millicores.
+            Ex: 4 nodes com 8 CPUs cada = 32.000m de capacidade total.
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.items[*].status.capacity.cpu'
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  var cpus = JSON.parse(value);
+                  var total = 0;
+                  cpus.forEach(function(cpu) {
+                    if (cpu.endsWith('m')) {
+                      total += parseInt(cpu);
+                    } else {
+                      total += parseInt(cpu) * 1000;
+                    }
+                  });
+                  return total;
+          tags:
+            - tag: component
+              value: capacity
+        - uuid: f2a3b4c5d6e7f8a9b0c1d2e3f4a5b50b
+          name: 'K8s: capacidade total de memória do cluster (bytes)'
+          type: DEPENDENT
+          key: 'k8s.cluster.mem.capacity'
+          master_item:
+            key: 'k8s.nodes.get'
+          delay: '0'
+          history: 7d
+          trends: 365d
+          units: B
+          description: 'Capacidade total de memória RAM de todos os nodes em bytes'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.items[*].status.capacity.memory'
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  var mems = JSON.parse(value);
+                  var total = 0;
+                  mems.forEach(function(mem) {
+                    if (mem.endsWith('Ki')) {
+                      total += parseInt(mem) * 1024;
+                    } else if (mem.endsWith('Mi')) {
+                      total += parseInt(mem) * 1024 * 1024;
+                    } else if (mem.endsWith('Gi')) {
+                      total += parseInt(mem) * 1024 * 1024 * 1024;
+                    } else {
+                      total += parseInt(mem);
+                    }
+                  });
+                  return total;
+          tags:
+            - tag: component
+              value: capacity
+        # ========================
+        # LLD — POR NODE
+        # ========================
+        - uuid: a3b4c5d6e7f8a9b0c1d2e3f4a5b6c60c
+          name: 'K8s: descoberta automática de nodes'
+          type: HTTP_AGENT
+          key: 'k8s.nodes.discovery'
+          delay: '5m'
+          history: '0'
+          trends: '0'
+          value_type: TEXT
+          url: '{$K8S.API.URL}/api/v1/nodes'
+          headers:
+            - name: Authorization
+              value: 'Bearer {$K8S.API.TOKEN}'
+          verify_peer: 'NO'
+          verify_host: 'NO'
+          description: 'Dados para descoberta LLD de nodes individuais'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.items[*].metadata.name'
+          tags:
+            - tag: component
+              value: discovery
+      discovery_rules:
+        - uuid: b4c5d6e7f8a9b0c1d2e3f4a5b6c7d70d
+          name: 'K8s: descoberta de nodes individuais'
+          type: HTTP_AGENT
+          key: 'k8s.node.discovery'
+          delay: '5m'
+          url: '{$K8S.API.URL}/api/v1/nodes'
+          headers:
+            - name: Authorization
+              value: 'Bearer {$K8S.API.TOKEN}'
+          verify_peer: 'NO'
+          verify_host: 'NO'
+          description: |
+            Regra de LLD — cria items e triggers automaticamente para cada node.
+            Macros extraídas: {#NODE.NAME}, {#NODE.ROLE}, {#NODE.OS}, {#NODE.RUNTIME}
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.items'
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  var nodes = JSON.parse(value);
+                  var result = [];
+                  nodes.forEach(function(node) {
+                    var labels = node.metadata.labels || {};
+                    var role = labels['node-role.kubernetes.io/control-plane'] ? 'control-plane' :
+                               labels['node-role.kubernetes.io/master'] ? 'master' : 'worker';
+                    result.push({
+                      '{#NODE.NAME}':    node.metadata.name,
+                      '{#NODE.ROLE}':    role,
+                      '{#NODE.OS}':      node.status.nodeInfo.osImage,
+                      '{#NODE.RUNTIME}': node.status.nodeInfo.containerRuntimeVersion,
+                      '{#NODE.KUBELET}': node.status.nodeInfo.kubeletVersion
+                    });
+                  });
+                  return JSON.stringify(result);
+          item_prototypes:
+            - uuid: c5d6e7f8a9b0c1d2e3f4a5b6c7d8e80e
+              name: 'K8s Node [{#NODE.NAME}]: status Ready'
+              type: HTTP_AGENT
+              key: 'k8s.node.ready[{#NODE.NAME}]'
+              delay: '60s'
+              history: 30d
+              trends: '0'
+              value_type: CHAR
+              url: '{$K8S.API.URL}/api/v1/nodes/{#NODE.NAME}'
+              headers:
+                - name: Authorization
+                  value: 'Bearer {$K8S.API.TOKEN}'
+              verify_peer: 'NO'
+              verify_host: 'NO'
+              description: 'Condição Ready do node (True/False/Unknown)'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.status.conditions[?(@.type=="Ready")].status'
+              tags:
+                - tag: component
+                  value: nodes
+                - tag: node
+                  value: '{#NODE.NAME}'
+                - tag: role
+                  value: '{#NODE.ROLE}'
+            - uuid: d6e7f8a9b0c1d2e3f4a5b6c7d8e9f90f
+              name: 'K8s Node [{#NODE.NAME}]: pods em execução'
+              type: HTTP_AGENT
+              key: 'k8s.node.pods.running[{#NODE.NAME}]'
+              delay: '60s'
+              history: 30d
+              trends: 365d
+              url: '{$K8S.API.URL}/api/v1/pods?fieldSelector=spec.nodeName%3D{#NODE.NAME},status.phase%3DRunning'
+              headers:
+                - name: Authorization
+                  value: 'Bearer {$K8S.API.TOKEN}'
+              verify_peer: 'NO'
+              verify_host: 'NO'
+              description: 'Número de pods em estado Running agendados neste node'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.items.length()'
+              tags:
+                - tag: component
+                  value: nodes
+                - tag: node
+                  value: '{#NODE.NAME}'
+            - uuid: e7f8a9b0c1d2e3f4a5b6c7d8e9f0a010
+              name: 'K8s Node [{#NODE.NAME}]: capacidade de pods'
+              type: HTTP_AGENT
+              key: 'k8s.node.pods.capacity[{#NODE.NAME}]'
+              delay: '5m'
+              history: 7d
+              trends: 365d
+              url: '{$K8S.API.URL}/api/v1/nodes/{#NODE.NAME}'
+              headers:
+                - name: Authorization
+                  value: 'Bearer {$K8S.API.TOKEN}'
+              verify_peer: 'NO'
+              verify_host: 'NO'
+              description: 'Limite máximo de pods que podem ser agendados neste node'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.status.capacity.pods'
+              tags:
+                - tag: component
+                  value: nodes
+                - tag: node
+                  value: '{#NODE.NAME}'
+            - uuid: f8a9b0c1d2e3f4a5b6c7d8e9f0a1b111
+              name: 'K8s Node [{#NODE.NAME}]: capacidade de CPU (millicores)'
+              type: HTTP_AGENT
+              key: 'k8s.node.cpu.capacity[{#NODE.NAME}]'
+              delay: '5m'
+              history: 7d
+              trends: 365d
+              units: 'm'
+              url: '{$K8S.API.URL}/api/v1/nodes/{#NODE.NAME}'
+              headers:
+                - name: Authorization
+                  value: 'Bearer {$K8S.API.TOKEN}'
+              verify_peer: 'NO'
+              verify_host: 'NO'
+              description: 'Capacidade total de CPU do node em millicores'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.status.capacity.cpu'
+                - type: JAVASCRIPT
+                  parameters:
+                    - |
+                      var v = value.trim();
+                      return v.endsWith('m') ? parseInt(v) : parseInt(v) * 1000;
+              tags:
+                - tag: component
+                  value: nodes
+                - tag: node
+                  value: '{#NODE.NAME}'
+            - uuid: a9b0c1d2e3f4a5b6c7d8e9f0a1b2c212
+              name: 'K8s Node [{#NODE.NAME}]: CPU alocada (requests, millicores)'
+              type: HTTP_AGENT
+              key: 'k8s.node.cpu.allocated[{#NODE.NAME}]'
+              delay: '60s'
+              history: 7d
+              trends: 365d
+              units: 'm'
+              url: '{$K8S.API.URL}/api/v1/pods?fieldSelector=spec.nodeName%3D{#NODE.NAME},status.phase%3DRunning'
+              headers:
+                - name: Authorization
+                  value: 'Bearer {$K8S.API.TOKEN}'
+              verify_peer: 'NO'
+              verify_host: 'NO'
+              description: |
+                Total de CPU requests alocados pelos pods em execução neste node.
+                Compara com a capacidade para calcular percentual de alocação.
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.items[*].spec.containers[*].resources.requests.cpu'
+                - type: JAVASCRIPT
+                  parameters:
+                    - |
+                      try {
+                        var cpus = JSON.parse(value);
+                        var total = 0;
+                        cpus.forEach(function(cpu) {
+                          if (!cpu) return;
+                          if (cpu.endsWith('m')) total += parseInt(cpu);
+                          else total += parseInt(cpu) * 1000;
+                        });
+                        return total;
+                      } catch(e) { return 0; }
+              tags:
+                - tag: component
+                  value: nodes
+                - tag: node
+                  value: '{#NODE.NAME}'
+            - uuid: b0c1d2e3f4a5b6c7d8e9f0a1b2c3d313
+              name: 'K8s Node [{#NODE.NAME}]: memória alocada (requests, bytes)'
+              type: HTTP_AGENT
+              key: 'k8s.node.mem.allocated[{#NODE.NAME}]'
+              delay: '60s'
+              history: 7d
+              trends: 365d
+              units: B
+              url: '{$K8S.API.URL}/api/v1/pods?fieldSelector=spec.nodeName%3D{#NODE.NAME},status.phase%3DRunning'
+              headers:
+                - name: Authorization
+                  value: 'Bearer {$K8S.API.TOKEN}'
+              verify_peer: 'NO'
+              verify_host: 'NO'
+              description: 'Total de memória requests alocados pelos pods em execução neste node'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.items[*].spec.containers[*].resources.requests.memory'
+                - type: JAVASCRIPT
+                  parameters:
+                    - |
+                      try {
+                        var mems = JSON.parse(value);
+                        var total = 0;
+                        mems.forEach(function(mem) {
+                          if (!mem) return;
+                          if (mem.endsWith('Ki')) total += parseInt(mem) * 1024;
+                          else if (mem.endsWith('Mi')) total += parseInt(mem) * 1024 * 1024;
+                          else if (mem.endsWith('Gi')) total += parseInt(mem) * 1024 * 1024 * 1024;
+                          else total += parseInt(mem);
+                        });
+                        return total;
+                      } catch(e) { return 0; }
+              tags:
+                - tag: component
+                  value: nodes
+                - tag: node
+                  value: '{#NODE.NAME}'
+            - uuid: c1d2e3f4a5b6c7d8e9f0a1b2c3d4e414
+              name: 'K8s Node [{#NODE.NAME}]: versão do kubelet'
+              type: HTTP_AGENT
+              key: 'k8s.node.kubelet.version[{#NODE.NAME}]'
+              delay: '1h'
+              history: 7d
+              trends: '0'
+              value_type: CHAR
+              url: '{$K8S.API.URL}/api/v1/nodes/{#NODE.NAME}'
+              headers:
+                - name: Authorization
+                  value: 'Bearer {$K8S.API.TOKEN}'
+              verify_peer: 'NO'
+              verify_host: 'NO'
+              description: 'Versão do kubelet em execução neste node'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.status.nodeInfo.kubeletVersion'
+              tags:
+                - tag: component
+                  value: nodes
+                - tag: node
+                  value: '{#NODE.NAME}'
+          trigger_prototypes:
+            - uuid: d2e3f4a5b6c7d8e9f0a1b2c3d4e5f515
+              expression: 'last(/Kubernetes Nodes - JPLS/k8s.node.ready[{#NODE.NAME}])<>"True"'
+              name: 'K8s: node [{#NODE.NAME}] está NotReady (role: {#NODE.ROLE})'
+              opdata: 'Status: {ITEM.LASTVALUE}'
+              priority: HIGH
+              description: |
+                Node saiu do status Ready.
+                Pods novos não serão agendados neste node.
+                Diagnóstico:
+                  kubectl describe node {#NODE.NAME}
+                  kubectl get events --field-selector involvedObject.name={#NODE.NAME}
+              tags:
+                - tag: scope
+                  value: availability
+            - uuid: e3f4a5b6c7d8e9f0a1b2c3d4e5f6a616
+              expression: 'last(/Kubernetes Nodes - JPLS/k8s.node.pods.running[{#NODE.NAME}]) / last(/Kubernetes Nodes - JPLS/k8s.node.pods.capacity[{#NODE.NAME}]) * 100 >= {$K8S.NODE.PODS.WARN}'
+              name: 'K8s: node [{#NODE.NAME}] próximo do limite de pods ({$K8S.NODE.PODS.WARN}%)'
+              opdata: 'Pods: {ITEM.LASTVALUE}'
+              priority: WARNING
+              description: |
+                Node usando mais de 90% da capacidade de pods.
+                Pods adicionais podem ser bloqueados pelo scheduler.
+                Considere adicionar nodes ao cluster ou redistribuir workloads.
+              tags:
+                - tag: scope
+                  value: capacity
+      triggers:
+        - uuid: f4a5b6c7d8e9f0a1b2c3d4e5f6a7b717
+          expression: 'last(/Kubernetes Nodes - JPLS/k8s.nodes.not.ready) >= 1'
+          name: 'K8s: {ITEM.LASTVALUE} node(s) NotReady no cluster'
+          opdata: 'Nodes NotReady: {ITEM.LASTVALUE}'
+          priority: HIGH
+          description: |
+            Um ou mais nodes estão fora do estado Ready.
+            Pods podem ser evicted e re-agendados em outros nodes.
+            Verifique: kubectl get nodes
+          tags:
+            - tag: scope
+              value: availability
+        - uuid: a5b6c7d8e9f0a1b2c3d4e5f6a7b8c818
+          expression: 'last(/Kubernetes Nodes - JPLS/k8s.nodes.memory.pressure) >= 1'
+          name: 'K8s: {ITEM.LASTVALUE} node(s) com MemoryPressure'
+          opdata: 'Nodes com pressão: {ITEM.LASTVALUE}'
+          priority: HIGH
+          description: |
+            Nodes ativando eviction de pods por pressão de memória.
+            Pods podem ser terminados sem aviso para liberar memória.
+          tags:
+            - tag: scope
+              value: pressure
+        - uuid: b6c7d8e9f0a1b2c3d4e5f6a7b8c9d919
+          expression: 'last(/Kubernetes Nodes - JPLS/k8s.nodes.disk.pressure) >= 1'
+          name: 'K8s: {ITEM.LASTVALUE} node(s) com DiskPressure'
+          opdata: 'Nodes com pressão: {ITEM.LASTVALUE}'
+          priority: HIGH
+          description: |
+            Disco do node acima do threshold de eviction.
+            Imagens e containers antigos serão removidos automaticamente.
+            Limpe imagens com: docker image prune -a
+          tags:
+            - tag: scope
+              value: pressure
+        - uuid: c7d8e9f0a1b2c3d4e5f6a7b8c9d0e01a
+          expression: 'last(/Kubernetes Nodes - JPLS/k8s.nodes.pid.pressure) >= 1'
+          name: 'K8s: {ITEM.LASTVALUE} node(s) com PIDPressure'
+          opdata: 'Nodes com pressão: {ITEM.LASTVALUE}'
+          priority: WARNING
+          tags:
+            - tag: scope
+              value: pressure
+        - uuid: d8e9f0a1b2c3d4e5f6a7b8c9d0e1f11b
+          expression: 'last(/Kubernetes Nodes - JPLS/k8s.nodes.network.unavailable) >= 1'
+          name: 'K8s: {ITEM.LASTVALUE} node(s) com NetworkUnavailable'
+          opdata: 'Nodes com problema: {ITEM.LASTVALUE}'
+          priority: HIGH
+          description: |
+            Problema na configuração de rede dos nodes.
+            Verifique o CNI plugin (Flannel, Calico, Cilium, OVN-Kubernetes).
+          tags:
+            - tag: scope
+              value: network
+        - uuid: e9f0a1b2c3d4e5f6a7b8c9d0e1f2a21c
+          expression: 'last(/Kubernetes Nodes - JPLS/k8s.events.warning) > 50'
+          name: 'K8s: alto número de Warning events no cluster ({ITEM.LASTVALUE})'
+          opdata: 'Events Warning: {ITEM.LASTVALUE}'
+          priority: WARNING
+          description: |
+            Muitos events Warning podem indicar instabilidade no cluster.
+            Verifique: kubectl get events --all-namespaces --field-selector type=Warning
+          tags:
+            - tag: scope
+              value: availability
+      graphs:
+        - uuid: f0a1b2c3d4e5f6a7b8c9d0e1f2a3b31d
+          name: 'K8s: Nodes — Ready vs NotReady'
+          graph_items:
+            - sortorder: '0'
+              color: 00CC00
+              item:
+                host: 'Kubernetes Nodes - JPLS'
+                key: 'k8s.nodes.ready'
+            - sortorder: '1'
+              color: E6002D
+              item:
+                host: 'Kubernetes Nodes - JPLS'
+                key: 'k8s.nodes.not.ready'
+        - uuid: a1b2c3d4e5f6a7b8c9d0e1f2a3b4c41e
+          name: 'K8s: Nodes — Pressão de Recursos'
+          graph_items:
+            - sortorder: '0'
+              color: E6002D
+              item:
+                host: 'Kubernetes Nodes - JPLS'
+                key: 'k8s.nodes.memory.pressure'
+            - sortorder: '1'
+              color: FFAD00
+              item:
+                host: 'Kubernetes Nodes - JPLS'
+                key: 'k8s.nodes.disk.pressure'
+            - sortorder: '2'
+              color: 9900CC
+              item:
+                host: 'Kubernetes Nodes - JPLS'
+                key: 'k8s.nodes.pid.pressure'
+        - uuid: b2c3d4e5f6a7b8c9d0e1f2a3b4c5d51f
+          name: 'K8s: Warning Events no Cluster'
+          graph_items:
+            - sortorder: '0'
+              color: FFAD00
+              item:
+                host: 'Kubernetes Nodes - JPLS'
+                key: 'k8s.events.warning'

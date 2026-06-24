@@ -35,8 +35,9 @@ zabbix-templates/
 │   ├── template_oracle_db.yaml           # Oracle DB — instância, tablespaces, sessões, RMAN, wait events
 │   └── README.md
 ├── kubernetes/
-│   ├── template_k8s_nodes.yaml           # em breve
-│   └── template_k8s_pods.yaml            # em breve
+│   ├── template_k8s_nodes.yaml           # K8s Nodes — Ready/NotReady, pressões, capacidade, LLD por node
+│   ├── template_k8s_pods.yaml            # K8s Pods — estados, CrashLoop, OOMKill, Deployments, Jobs, PVCs
+│   └── README.md
 └── scripts/
     ├── check_certificate.sh              # em breve
     └── check_weblogic.py                 # em breve
@@ -57,7 +58,8 @@ zabbix-templates/
 | [Docker](./services/template_docker.yaml) | Services | 6.0+ / 7.0+ | Agent 2 | ✅ Disponível |
 | [MySQL](./database/template_mysql.yaml) | Database | 6.0+ / 7.0+ | Agent 2 | ✅ Disponível |
 | [Oracle Database](./database/template_oracle_db.yaml) | Database | 6.0+ / 7.0+ | ODBC | ✅ Disponível |
-| Kubernetes Nodes | Kubernetes | 6.0+ / 7.0+ | HTTP API | 🔧 Em breve |
+| [Kubernetes Nodes](./kubernetes/template_k8s_nodes.yaml) | Kubernetes | 6.0+ / 7.0+ | HTTP API | ✅ Disponível |
+| [Kubernetes Pods](./kubernetes/template_k8s_pods.yaml) | Kubernetes | 6.0+ / 7.0+ | HTTP API | ✅ Disponível |
 
 ---
 

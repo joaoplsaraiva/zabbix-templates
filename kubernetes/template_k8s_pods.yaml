@@ -1,0 +1,778 @@
+zabbix_export:
+  version: '7.0'
+  template_groups:
+    - uuid: k451l022j02nl2i65i7ljh1jj7njj690
+      name: 'Templates/Kubernetes'
+  templates:
+    - uuid: 7f1a3b2c8d4e5f6a7b8c9d0e1f2a3b4c
+      template: 'Kubernetes Pods - JPLS'
+      name: 'Kubernetes Pods - JPLS'
+      description: |
+        Template de monitoramento de pods Kubernetes por namespace via HTTP API.
+        Cobre: contagem de pods por estado (Running/Pending/Failed/Succeeded),
+        pods em CrashLoopBackOff, OOMKilled, restarts excessivos, pods
+        sem recursos definidos, jobs com falha e deployments degradados.
+
+        Desenvolvido por João Paulo de Lima Saraiva
+        Baseado em uso real de Kubernetes, OpenShift 4.x e Rancher 2.x
+        na SEFA/PA — ambientes de produção com +50 namespaces e
+        múltiplos middlewares (WebLogic, Kafka, Keycloak, 3Scale, NiFi).
+
+        Certificações relacionadas:
+          Red Hat DO280 — OpenShift Administration II (v4.14)
+          Red Hat DO467 — Managing Enterprise Automation with Ansible (v2.2)
+          CKA — Kubernetes: Orquestração de Ambientes Escaláveis (4linux)
+
+        Compatível com Zabbix 6.0 LTS e 7.0 LTS
+        Funciona com: Kubernetes 1.24+, OpenShift 4.x, Rancher 2.x
+
+        Requer o mesmo ServiceAccount do template Kubernetes Nodes - JPLS.
+
+        Repositório: https://github.com/joaoplsaraiva/zabbix-templates
+      groups:
+        - name: 'Templates/Kubernetes'
+      macros:
+        - macro: '{$K8S.API.URL}'
+          value: 'https://kubernetes.default.svc:6443'
+          description: 'URL da API do Kubernetes'
+        - macro: '{$K8S.API.TOKEN}'
+          value: ''
+          description: 'Bearer token da ServiceAccount de monitoramento'
+        - macro: '{$K8S.NAMESPACE}'
+          value: 'default'
+          description: 'Namespace monitorado (use "" para monitorar todos os namespaces)'
+        - macro: '{$K8S.POD.RESTARTS.WARN}'
+          value: '5'
+          description: 'Número de restarts de container para alerta'
+        - macro: '{$K8S.POD.RESTARTS.CRIT}'
+          value: '20'
+          description: 'Número de restarts — crítico (indica CrashLoopBackOff)'
+        - macro: '{$K8S.POD.PENDING.TIME}'
+          value: '10m'
+          description: 'Tempo máximo que um pod pode ficar Pending antes de alertar'
+        - macro: '{$K8S.DEPLOY.UNAVAILABLE.WARN}'
+          value: '1'
+          description: 'Réplicas indisponíveis em Deployment para alerta'
+        - macro: '{$K8S.JOB.FAILED.WARN}'
+          value: '1'
+          description: 'Jobs com falha para alerta'
+        - macro: '{$K8S.CONTAINER.NO.LIMITS.WARN}'
+          value: '5'
+          description: 'Containers sem limits definidos para alerta'
+      items:
+        # ========================
+        # PODS — CONTAGEM GLOBAL
+        # ========================
+        - uuid: a1b2c3d4e5f6a7b8c9d0e1f2a3b4cb20
+          name: 'K8s Pods: dados brutos da API'
+          type: HTTP_AGENT
+          key: 'k8s.pods.get'
+          delay: '60s'
+          history: '0'
+          trends: '0'
+          value_type: TEXT
+          url: '{$K8S.API.URL}/api/v1/namespaces/{$K8S.NAMESPACE}/pods'
+          headers:
+            - name: Authorization
+              value: 'Bearer {$K8S.API.TOKEN}'
+            - name: Accept
+              value: 'application/json'
+          verify_peer: 'NO'
+          verify_host: 'NO'
+          description: |
+            Coleta JSON completo de todos os pods do namespace via API.
+            Item master — outros items extraem dados via preprocessing JSONPath/JS.
+            Altere a macro {$K8S.NAMESPACE} para monitorar outros namespaces.
+          tags:
+            - tag: component
+              value: pods
+        - uuid: b2c3d4e5f6a7b8c9d0e1f2a3b4c5dc21
+          name: 'K8s Pods: total de pods no namespace'
+          type: DEPENDENT
+          key: 'k8s.pods.total'
+          master_item:
+            key: 'k8s.pods.get'
+          delay: '0'
+          history: 30d
+          trends: 365d
+          description: 'Número total de pods em qualquer estado no namespace monitorado'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.items.length()'
+          tags:
+            - tag: component
+              value: pods
+        - uuid: c3d4e5f6a7b8c9d0e1f2a3b4c5d6ed22
+          name: 'K8s Pods: pods em estado Running'
+          type: DEPENDENT
+          key: 'k8s.pods.running'
+          master_item:
+            key: 'k8s.pods.get'
+          delay: '0'
+          history: 30d
+          trends: 365d
+          description: 'Pods com todos os containers em execução e prontos'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.items[?(@.status.phase=="Running")].length()'
+          tags:
+            - tag: component
+              value: pods
+        - uuid: d4e5f6a7b8c9d0e1f2a3b4c5d6e7fe23
+          name: 'K8s Pods: pods em estado Pending'
+          type: DEPENDENT
+          key: 'k8s.pods.pending'
+          master_item:
+            key: 'k8s.pods.get'
+          delay: '0'
+          history: 30d
+          trends: 365d
+          description: |
+            Pods aguardando para ser agendados ou containers ainda iniciando.
+            Pods presos em Pending por muito tempo indicam:
+              - Node sem recursos disponíveis (CPU/memória insuficiente)
+              - PersistentVolume não disponível
+              - ImagePullBackOff no init container
+              - Taint/toleration incompatíveis
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.items[?(@.status.phase=="Pending")].length()'
+          tags:
+            - tag: component
+              value: pods
+        - uuid: e5f6a7b8c9d0e1f2a3b4c5d6e7f8af24
+          name: 'K8s Pods: pods em estado Failed'
+          type: DEPENDENT
+          key: 'k8s.pods.failed'
+          master_item:
+            key: 'k8s.pods.get'
+          delay: '0'
+          history: 30d
+          trends: 365d
+          description: |
+            Pods com todos os containers encerrados e pelo menos um com falha.
+            Pods Failed geralmente são de Jobs que falharam ou crasharam fatalmente.
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.items[?(@.status.phase=="Failed")].length()'
+          tags:
+            - tag: component
+              value: pods
+        - uuid: f6a7b8c9d0e1f2a3b4c5d6e7f8a9b025
+          name: 'K8s Pods: pods em estado Succeeded'
+          type: DEPENDENT
+          key: 'k8s.pods.succeeded'
+          master_item:
+            key: 'k8s.pods.get'
+          delay: '0'
+          history: 30d
+          trends: 365d
+          description: |
+            Pods com todos os containers encerrados com sucesso (exit code 0).
+            Esperado em Jobs e CronJobs concluídos.
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.items[?(@.status.phase=="Succeeded")].length()'
+          tags:
+            - tag: component
+              value: pods
+        # ========================
+        # CONTAINERS — ESTADOS PROBLEMÁTICOS
+        # ========================
+        - uuid: a7b8c9d0e1f2a3b4c5d6e7f8a9b0c126
+          name: 'K8s Pods: containers em CrashLoopBackOff'
+          type: DEPENDENT
+          key: 'k8s.pods.crashloop'
+          master_item:
+            key: 'k8s.pods.get'
+          delay: '0'
+          history: 30d
+          trends: 365d
+          description: |
+            Número de containers em estado CrashLoopBackOff.
+            CrashLoopBackOff = container crasha repetidamente e o Kubernetes espera
+            cada vez mais tempo antes de tentar reiniciar (backoff exponencial).
+            Diagnóstico: kubectl logs <pod> --previous
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.items[*].status.containerStatuses[*].state.waiting.reason'
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  try {
+                    var reasons = JSON.parse(value);
+                    return reasons.filter(function(r) {
+                      return r === 'CrashLoopBackOff';
+                    }).length;
+                  } catch(e) { return 0; }
+          tags:
+            - tag: component
+              value: containers
+        - uuid: b8c9d0e1f2a3b4c5d6e7f8a9b0c1d227
+          name: 'K8s Pods: containers em ImagePullBackOff'
+          type: DEPENDENT
+          key: 'k8s.pods.imagepullbackoff'
+          master_item:
+            key: 'k8s.pods.get'
+          delay: '0'
+          history: 30d
+          trends: 365d
+          description: |
+            Containers não conseguindo baixar a imagem Docker.
+            Causas comuns:
+              - Tag de imagem inexistente ou errada
+              - Registry privado sem credenciais (imagePullSecret)
+              - Sem acesso de rede ao registry
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.items[*].status.containerStatuses[*].state.waiting.reason'
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  try {
+                    var reasons = JSON.parse(value);
+                    return reasons.filter(function(r) {
+                      return r === 'ImagePullBackOff' || r === 'ErrImagePull';
+                    }).length;
+                  } catch(e) { return 0; }
+          tags:
+            - tag: component
+              value: containers
+        - uuid: c9d0e1f2a3b4c5d6e7f8a9b0c1d2e328
+          name: 'K8s Pods: containers OOMKilled (total desde o start)'
+          type: DEPENDENT
+          key: 'k8s.pods.oomkilled'
+          master_item:
+            key: 'k8s.pods.get'
+          delay: '0'
+          history: 30d
+          trends: 365d
+          description: |
+            Número de containers que foram terminados por OOM (Out of Memory).
+            OOMKilled = container ultrapassou o memory limit e foi morto pelo kernel.
+            Solução: aumente o memory limit ou otimize o uso de memória da aplicação.
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.items[*].status.containerStatuses[*].lastState.terminated.reason'
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  try {
+                    var reasons = JSON.parse(value);
+                    return reasons.filter(function(r) {
+                      return r === 'OOMKilled';
+                    }).length;
+                  } catch(e) { return 0; }
+          tags:
+            - tag: component
+              value: containers
+        - uuid: d0e1f2a3b4c5d6e7f8a9b0c1d2e3f429
+          name: 'K8s Pods: total de restarts de containers'
+          type: DEPENDENT
+          key: 'k8s.pods.restarts.total'
+          master_item:
+            key: 'k8s.pods.get'
+          delay: '0'
+          history: 30d
+          trends: 365d
+          description: |
+            Soma total de restarts de todos os containers no namespace.
+            Crescimento contínuo desta métrica indica instabilidade nos pods.
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.items[*].status.containerStatuses[*].restartCount'
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  try {
+                    var counts = JSON.parse(value);
+                    return counts.reduce(function(a, b) { return a + b; }, 0);
+                  } catch(e) { return 0; }
+          tags:
+            - tag: component
+              value: containers
+        - uuid: e1f2a3b4c5d6e7f8a9b0c1d2e3f4a52a
+          name: 'K8s Pods: containers sem resources.limits definidos'
+          type: DEPENDENT
+          key: 'k8s.pods.no.limits'
+          master_item:
+            key: 'k8s.pods.get'
+          delay: '0'
+          history: 7d
+          trends: 365d
+          description: |
+            Containers rodando sem memory/cpu limits definidos.
+            Containers sem limits podem consumir todos os recursos do node
+            e causar OOMKill em outros pods (noisy neighbor problem).
+            Boas práticas: sempre defina resources.requests e resources.limits.
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.items[*].spec.containers[*]'
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  try {
+                    var containers = JSON.parse(value);
+                    var count = 0;
+                    containers.forEach(function(c) {
+                      if (!c.resources || !c.resources.limits ||
+                          (!c.resources.limits.cpu && !c.resources.limits.memory)) {
+                        count++;
+                      }
+                    });
+                    return count;
+                  } catch(e) { return 0; }
+          tags:
+            - tag: component
+              value: containers
+        # ========================
+        # DEPLOYMENTS
+        # ========================
+        - uuid: f2a3b4c5d6e7f8a9b0c1d2e3f4a5b62b
+          name: 'K8s: dados brutos dos Deployments'
+          type: HTTP_AGENT
+          key: 'k8s.deployments.get'
+          delay: '60s'
+          history: '0'
+          trends: '0'
+          value_type: TEXT
+          url: '{$K8S.API.URL}/apis/apps/v1/namespaces/{$K8S.NAMESPACE}/deployments'
+          headers:
+            - name: Authorization
+              value: 'Bearer {$K8S.API.TOKEN}'
+          verify_peer: 'NO'
+          verify_host: 'NO'
+          description: 'Coleta JSON de todos os Deployments do namespace'
+          tags:
+            - tag: component
+              value: deployments
+        - uuid: a3b4c5d6e7f8a9b0c1d2e3f4a5b6c72c
+          name: 'K8s: total de Deployments no namespace'
+          type: DEPENDENT
+          key: 'k8s.deployments.total'
+          master_item:
+            key: 'k8s.deployments.get'
+          delay: '0'
+          history: 30d
+          trends: 365d
+          description: 'Número total de Deployments no namespace'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.items.length()'
+          tags:
+            - tag: component
+              value: deployments
+        - uuid: b4c5d6e7f8a9b0c1d2e3f4a5b6c7d82d
+          name: 'K8s: Deployments com réplicas indisponíveis'
+          type: DEPENDENT
+          key: 'k8s.deployments.unavailable'
+          master_item:
+            key: 'k8s.deployments.get'
+          delay: '0'
+          history: 30d
+          trends: 365d
+          description: |
+            Deployments com pelo menos uma réplica indisponível.
+            Deployments degradados podem causar impacto parcial no serviço.
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.items[*]'
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  try {
+                    var deploys = JSON.parse(value);
+                    return deploys.filter(function(d) {
+                      return (d.status.unavailableReplicas || 0) >= 1;
+                    }).length;
+                  } catch(e) { return 0; }
+          tags:
+            - tag: component
+              value: deployments
+        - uuid: c5d6e7f8a9b0c1d2e3f4a5b6c7d8e92e
+          name: 'K8s: Deployments com 0 réplicas prontas (completamente fora)'
+          type: DEPENDENT
+          key: 'k8s.deployments.down'
+          master_item:
+            key: 'k8s.deployments.get'
+          delay: '0'
+          history: 30d
+          trends: 365d
+          description: |
+            Deployments com nenhuma réplica pronta (readyReplicas = 0).
+            Significa que o serviço está completamente indisponível.
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.items[*]'
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  try {
+                    var deploys = JSON.parse(value);
+                    return deploys.filter(function(d) {
+                      return (d.status.readyReplicas || 0) === 0 &&
+                             (d.spec.replicas || 0) > 0;
+                    }).length;
+                  } catch(e) { return 0; }
+          tags:
+            - tag: component
+              value: deployments
+        # ========================
+        # JOBS E CRONJOBS
+        # ========================
+        - uuid: d6e7f8a9b0c1d2e3f4a5b6c7d8e9f02f
+          name: 'K8s: Jobs com falha no namespace'
+          type: HTTP_AGENT
+          key: 'k8s.jobs.failed'
+          delay: '5m'
+          history: 30d
+          trends: 365d
+          url: '{$K8S.API.URL}/apis/batch/v1/namespaces/{$K8S.NAMESPACE}/jobs'
+          headers:
+            - name: Authorization
+              value: 'Bearer {$K8S.API.TOKEN}'
+          verify_peer: 'NO'
+          verify_host: 'NO'
+          description: |
+            Número de Jobs com status Failed no namespace.
+            Jobs com falha devem ser investigados e re-executados se necessário.
+            kubectl get jobs -n {namespace}
+            kubectl describe job <job-name> -n {namespace}
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.items[*]'
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  try {
+                    var jobs = JSON.parse(value);
+                    return jobs.filter(function(j) {
+                      return (j.status.failed || 0) >= 1 &&
+                             !(j.status.succeeded);
+                    }).length;
+                  } catch(e) { return 0; }
+          tags:
+            - tag: component
+              value: jobs
+        - uuid: e7f8a9b0c1d2e3f4a5b6c7d8e9f0a130
+          name: 'K8s: CronJobs ativos no namespace'
+          type: HTTP_AGENT
+          key: 'k8s.cronjobs.active'
+          delay: '5m'
+          history: 30d
+          trends: 365d
+          url: '{$K8S.API.URL}/apis/batch/v1/namespaces/{$K8S.NAMESPACE}/cronjobs'
+          headers:
+            - name: Authorization
+              value: 'Bearer {$K8S.API.TOKEN}'
+          verify_peer: 'NO'
+          verify_host: 'NO'
+          description: 'Número total de CronJobs configurados e ativos no namespace'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.items[?(@.spec.suspend!=true)].length()'
+          tags:
+            - tag: component
+              value: jobs
+        # ========================
+        # NAMESPACES
+        # ========================
+        - uuid: f8a9b0c1d2e3f4a5b6c7d8e9f0a1b231
+          name: 'K8s: total de namespaces no cluster'
+          type: HTTP_AGENT
+          key: 'k8s.namespaces.total'
+          delay: '5m'
+          history: 30d
+          trends: 365d
+          url: '{$K8S.API.URL}/api/v1/namespaces'
+          headers:
+            - name: Authorization
+              value: 'Bearer {$K8S.API.TOKEN}'
+          verify_peer: 'NO'
+          verify_host: 'NO'
+          description: 'Número total de namespaces no cluster'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.items.length()'
+          tags:
+            - tag: component
+              value: cluster
+        - uuid: a9b0c1d2e3f4a5b6c7d8e9f0a1b2c332
+          name: 'K8s: namespaces em estado Terminating'
+          type: HTTP_AGENT
+          key: 'k8s.namespaces.terminating'
+          delay: '2m'
+          history: 7d
+          trends: 365d
+          url: '{$K8S.API.URL}/api/v1/namespaces'
+          headers:
+            - name: Authorization
+              value: 'Bearer {$K8S.API.TOKEN}'
+          verify_peer: 'NO'
+          verify_host: 'NO'
+          description: |
+            Namespaces presos em estado Terminating.
+            Um namespace preso em Terminating geralmente tem finalizers pendentes.
+            Diagnóstico: kubectl get namespace <ns> -o json | jq .spec.finalizers
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.items[?(@.status.phase=="Terminating")].length()'
+          tags:
+            - tag: component
+              value: cluster
+        # ========================
+        # PERSISTENT VOLUMES
+        # ========================
+        - uuid: b0c1d2e3f4a5b6c7d8e9f0a1b2c3d433
+          name: 'K8s: PersistentVolumeClaims com falha (Lost/Pending)'
+          type: HTTP_AGENT
+          key: 'k8s.pvc.failed'
+          delay: '2m'
+          history: 30d
+          trends: 365d
+          url: '{$K8S.API.URL}/api/v1/namespaces/{$K8S.NAMESPACE}/persistentvolumeclaims'
+          headers:
+            - name: Authorization
+              value: 'Bearer {$K8S.API.TOKEN}'
+          verify_peer: 'NO'
+          verify_host: 'NO'
+          description: |
+            PVCs em estado Lost ou Pending por mais de 5 minutos.
+            PVCs com falha bloqueiam pods que dependem destes volumes.
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.items[*]'
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  try {
+                    var pvcs = JSON.parse(value);
+                    return pvcs.filter(function(p) {
+                      return p.status.phase === 'Lost' || p.status.phase === 'Pending';
+                    }).length;
+                  } catch(e) { return 0; }
+          tags:
+            - tag: component
+              value: storage
+      triggers:
+        - uuid: c1d2e3f4a5b6c7d8e9f0a1b2c3d4e534
+          expression: 'last(/Kubernetes Pods - JPLS/k8s.pods.failed) >= 1'
+          name: 'K8s: {ITEM.LASTVALUE} pod(s) em estado Failed no namespace [{$K8S.NAMESPACE}]'
+          opdata: 'Pods Failed: {ITEM.LASTVALUE}'
+          priority: HIGH
+          description: |
+            Pods em estado Failed. Containers terminaram com código de saída diferente de 0.
+            Diagnóstico:
+              kubectl get pods --field-selector=status.phase=Failed -n {$K8S.NAMESPACE}
+              kubectl describe pod <pod-name> -n {$K8S.NAMESPACE}
+              kubectl logs <pod-name> -n {$K8S.NAMESPACE} --previous
+          tags:
+            - tag: scope
+              value: availability
+        - uuid: d2e3f4a5b6c7d8e9f0a1b2c3d4e5f635
+          expression: 'last(/Kubernetes Pods - JPLS/k8s.pods.pending) >= 3'
+          name: 'K8s: {ITEM.LASTVALUE} pod(s) em Pending no namespace [{$K8S.NAMESPACE}]'
+          opdata: 'Pods Pending: {ITEM.LASTVALUE}'
+          priority: WARNING
+          description: |
+            Múltiplos pods presos em Pending.
+            Verifique: kubectl get pods --field-selector=status.phase=Pending -n {$K8S.NAMESPACE}
+            E os eventos: kubectl get events -n {$K8S.NAMESPACE} --sort-by=.lastTimestamp
+          tags:
+            - tag: scope
+              value: availability
+        - uuid: e3f4a5b6c7d8e9f0a1b2c3d4e5f6a736
+          expression: 'last(/Kubernetes Pods - JPLS/k8s.pods.crashloop) >= 1'
+          name: 'K8s: {ITEM.LASTVALUE} container(s) em CrashLoopBackOff no namespace [{$K8S.NAMESPACE}]'
+          opdata: 'CrashLoops: {ITEM.LASTVALUE}'
+          priority: HIGH
+          description: |
+            Containers em CrashLoopBackOff — crashando repetidamente.
+            Diagnóstico:
+              kubectl get pods -n {$K8S.NAMESPACE} | grep CrashLoopBackOff
+              kubectl logs <pod> -n {$K8S.NAMESPACE} --previous
+              kubectl describe pod <pod> -n {$K8S.NAMESPACE}
+          tags:
+            - tag: scope
+              value: availability
+        - uuid: f4a5b6c7d8e9f0a1b2c3d4e5f6a7b837
+          expression: 'last(/Kubernetes Pods - JPLS/k8s.pods.imagepullbackoff) >= 1'
+          name: 'K8s: {ITEM.LASTVALUE} container(s) em ImagePullBackOff no namespace [{$K8S.NAMESPACE}]'
+          opdata: 'ImagePullBackOff: {ITEM.LASTVALUE}'
+          priority: HIGH
+          description: |
+            Containers não conseguem baixar a imagem Docker.
+            Verifique: tag da imagem, credenciais do registry (imagePullSecret), conectividade.
+          tags:
+            - tag: scope
+              value: availability
+        - uuid: a5b6c7d8e9f0a1b2c3d4e5f6a7b8c938
+          expression: 'last(/Kubernetes Pods - JPLS/k8s.pods.oomkilled) >= 1'
+          name: 'K8s: {ITEM.LASTVALUE} container(s) terminado(s) por OOMKill no namespace [{$K8S.NAMESPACE}]'
+          opdata: 'OOMKilled: {ITEM.LASTVALUE}'
+          priority: HIGH
+          description: |
+            Containers mortos pelo kernel por exceder o memory limit.
+            Aumente resources.limits.memory ou otimize o uso de memória da aplicação.
+            kubectl describe pod <pod> -n {$K8S.NAMESPACE} | grep -A5 OOMKill
+          tags:
+            - tag: scope
+              value: capacity
+        - uuid: b6c7d8e9f0a1b2c3d4e5f6a7b8c9d039
+          expression: 'last(/Kubernetes Pods - JPLS/k8s.deployments.down) >= 1'
+          name: 'K8s: {ITEM.LASTVALUE} Deployment(s) completamente indisponível(is) no namespace [{$K8S.NAMESPACE}]'
+          opdata: 'Deployments DOWN: {ITEM.LASTVALUE}'
+          priority: DISASTER
+          description: |
+            Deployment(s) com 0 réplicas prontas — serviço completamente fora do ar.
+            kubectl get deployments -n {$K8S.NAMESPACE}
+            kubectl rollout status deployment/<name> -n {$K8S.NAMESPACE}
+            kubectl rollout history deployment/<name> -n {$K8S.NAMESPACE}
+          tags:
+            - tag: scope
+              value: availability
+        - uuid: c7d8e9f0a1b2c3d4e5f6a7b8c9d0e13a
+          expression: 'last(/Kubernetes Pods - JPLS/k8s.deployments.unavailable) >= {$K8S.DEPLOY.UNAVAILABLE.WARN}'
+          name: 'K8s: {ITEM.LASTVALUE} Deployment(s) degradado(s) no namespace [{$K8S.NAMESPACE}]'
+          opdata: 'Deployments degradados: {ITEM.LASTVALUE}'
+          priority: WARNING
+          description: 'Deployments com réplicas insuficientes — capacidade reduzida.'
+          dependencies:
+            - name: 'K8s: {ITEM.LASTVALUE} Deployment(s) completamente indisponível(is) no namespace [{$K8S.NAMESPACE}]'
+              expression: 'last(/Kubernetes Pods - JPLS/k8s.deployments.down) >= 1'
+          tags:
+            - tag: scope
+              value: availability
+        - uuid: d8e9f0a1b2c3d4e5f6a7b8c9d0e1f23b
+          expression: 'last(/Kubernetes Pods - JPLS/k8s.jobs.failed) >= {$K8S.JOB.FAILED.WARN}'
+          name: 'K8s: {ITEM.LASTVALUE} Job(s) com falha no namespace [{$K8S.NAMESPACE}]'
+          opdata: 'Jobs com falha: {ITEM.LASTVALUE}'
+          priority: WARNING
+          description: 'Jobs Kubernetes falharam. Verifique kubectl get jobs -n {$K8S.NAMESPACE}'
+          tags:
+            - tag: scope
+              value: availability
+        - uuid: e9f0a1b2c3d4e5f6a7b8c9d0e1f2a33c
+          expression: 'last(/Kubernetes Pods - JPLS/k8s.pods.no.limits) >= {$K8S.CONTAINER.NO.LIMITS.WARN}'
+          name: 'K8s: {ITEM.LASTVALUE} container(s) sem resources.limits no namespace [{$K8S.NAMESPACE}]'
+          opdata: 'Sem limits: {ITEM.LASTVALUE}'
+          priority: INFO
+          description: |
+            Containers sem limits podem monopolizar recursos do node.
+            Boas práticas: sempre definir resources.requests e resources.limits.
+            kubectl get pods -n {$K8S.NAMESPACE} -o json |
+              jq '.items[].spec.containers[] | select(.resources.limits == null) | .name'
+          tags:
+            - tag: scope
+              value: capacity
+        - uuid: f0a1b2c3d4e5f6a7b8c9d0e1f2a3b43d
+          expression: 'last(/Kubernetes Pods - JPLS/k8s.pvc.failed) >= 1'
+          name: 'K8s: {ITEM.LASTVALUE} PVC(s) com falha no namespace [{$K8S.NAMESPACE}]'
+          opdata: 'PVCs com falha: {ITEM.LASTVALUE}'
+          priority: HIGH
+          description: |
+            PVCs em estado Lost ou Pending bloqueiam pods que dependem destes volumes.
+            kubectl get pvc -n {$K8S.NAMESPACE}
+            kubectl describe pvc <pvc-name> -n {$K8S.NAMESPACE}
+          tags:
+            - tag: scope
+              value: storage
+        - uuid: a1b2c3d4e5f6a7b8c9d0e1f2a3b4c53e
+          expression: 'last(/Kubernetes Pods - JPLS/k8s.namespaces.terminating) >= 1'
+          name: 'K8s: {ITEM.LASTVALUE} namespace(s) preso(s) em Terminating'
+          opdata: 'Namespaces Terminating: {ITEM.LASTVALUE}'
+          priority: WARNING
+          description: |
+            Namespace preso em Terminating — finalizers pendentes impedindo exclusão.
+            Diagnóstico:
+              kubectl get namespace <ns> -o json | jq .spec.finalizers
+              kubectl get all -n <ns>
+          tags:
+            - tag: scope
+              value: availability
+      graphs:
+        - uuid: b2c3d4e5f6a7b8c9d0e1f2a3b4c5d63f
+          name: 'K8s Pods: Distribuição por Estado'
+          graph_items:
+            - sortorder: '0'
+              color: 00CC00
+              item:
+                host: 'Kubernetes Pods - JPLS'
+                key: 'k8s.pods.running'
+            - sortorder: '1'
+              color: FFAD00
+              item:
+                host: 'Kubernetes Pods - JPLS'
+                key: 'k8s.pods.pending'
+            - sortorder: '2'
+              color: E6002D
+              item:
+                host: 'Kubernetes Pods - JPLS'
+                key: 'k8s.pods.failed'
+            - sortorder: '3'
+              color: 0080FF
+              item:
+                host: 'Kubernetes Pods - JPLS'
+                key: 'k8s.pods.succeeded'
+        - uuid: c3d4e5f6a7b8c9d0e1f2a3b4c5d6e740
+          name: 'K8s Pods: Problemas de Containers'
+          graph_items:
+            - sortorder: '0'
+              color: E6002D
+              item:
+                host: 'Kubernetes Pods - JPLS'
+                key: 'k8s.pods.crashloop'
+            - sortorder: '1'
+              color: FFAD00
+              item:
+                host: 'Kubernetes Pods - JPLS'
+                key: 'k8s.pods.oomkilled'
+            - sortorder: '2'
+              color: CC00CC
+              item:
+                host: 'Kubernetes Pods - JPLS'
+                key: 'k8s.pods.imagepullbackoff'
+        - uuid: d4e5f6a7b8c9d0e1f2a3b4c5d6e7f841
+          name: 'K8s: Deployments (total / degradados / down)'
+          graph_items:
+            - sortorder: '0'
+              color: 0080FF
+              item:
+                host: 'Kubernetes Pods - JPLS'
+                key: 'k8s.deployments.total'
+            - sortorder: '1'
+              color: FFAD00
+              item:
+                host: 'Kubernetes Pods - JPLS'
+                key: 'k8s.deployments.unavailable'
+            - sortorder: '2'
+              color: E6002D
+              item:
+                host: 'Kubernetes Pods - JPLS'
+                key: 'k8s.deployments.down'
+        - uuid: e5f6a7b8c9d0e1f2a3b4c5d6e7f8a942
+          name: 'K8s Pods: Total de Restarts'
+          graph_items:
+            - sortorder: '0'
+              color: E6002D
+              item:
+                host: 'Kubernetes Pods - JPLS'
+                key: 'k8s.pods.restarts.total'

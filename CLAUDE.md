@@ -100,10 +100,8 @@ Os templates foram criados com base na infraestrutura real da SEFA:
 ## Como Contribuir / Expandir
 
 ### Próximos templates planejados
-1. `kubernetes/template_k8s_nodes.yaml` — status e recursos dos nodes K8s
-2. `kubernetes/template_k8s_pods.yaml` — pods por namespace, restarts, OOMKill
-3. `scripts/check_certificate.sh` — valida expiração SSL de endpoints
-4. `scripts/check_weblogic.py` — health Oracle WebLogic via WLST
+1. `scripts/check_certificate.sh` — valida expiração SSL de endpoints
+2. `scripts/check_weblogic.py` — health Oracle WebLogic via WLST
 
 ### Ao criar novo template
 1. Copie a estrutura de um template existente como base
