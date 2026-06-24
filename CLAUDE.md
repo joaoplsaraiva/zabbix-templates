@@ -99,9 +99,17 @@ Os templates foram criados com base na infraestrutura real da SEFA:
 
 ## Como Contribuir / Expandir
 
-### Próximos templates planejados
-1. `scripts/check_certificate.sh` — valida expiração SSL de endpoints
-2. `scripts/check_weblogic.py` — health Oracle WebLogic via WLST
+### Status do repositório
+**Completo** — todos os templates e scripts planejados foram implementados.
+
+| Pasta | Arquivos |
+|---|---|
+| `linux/` | template_linux_by_agent |
+| `network/` | template_link_internet, template_mikrotik_snmp, template_switch_datacom |
+| `services/` | template_haproxy, template_apache, template_docker |
+| `database/` | template_mysql, template_oracle_db |
+| `kubernetes/` | template_k8s_nodes, template_k8s_pods |
+| `scripts/` | check_certificate.sh, check_weblogic.py |
 
 ### Ao criar novo template
 1. Copie a estrutura de um template existente como base

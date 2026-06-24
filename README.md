@@ -39,8 +39,9 @@ zabbix-templates/
 │   ├── template_k8s_pods.yaml            # K8s Pods — estados, CrashLoop, OOMKill, Deployments, Jobs, PVCs
 │   └── README.md
 └── scripts/
-    ├── check_certificate.sh              # em breve
-    └── check_weblogic.py                 # em breve
+    ├── check_certificate.sh              # Verifica expiração de certificados SSL/TLS (dias restantes)
+    ├── check_weblogic.py                 # Health check Oracle WebLogic via REST API (server, JVM, DS, apps)
+    └── README.md
 ```
 
 ---
@@ -60,6 +61,8 @@ zabbix-templates/
 | [Oracle Database](./database/template_oracle_db.yaml) | Database | 6.0+ / 7.0+ | ODBC | ✅ Disponível |
 | [Kubernetes Nodes](./kubernetes/template_k8s_nodes.yaml) | Kubernetes | 6.0+ / 7.0+ | HTTP API | ✅ Disponível |
 | [Kubernetes Pods](./kubernetes/template_k8s_pods.yaml) | Kubernetes | 6.0+ / 7.0+ | HTTP API | ✅ Disponível |
+| [check_certificate.sh](./scripts/check_certificate.sh) | Scripts | 6.0+ / 7.0+ | UserParameter | ✅ Disponível |
+| [check_weblogic.py](./scripts/check_weblogic.py) | Scripts | 6.0+ / 7.0+ | UserParameter | ✅ Disponível |
 
 ---
 
